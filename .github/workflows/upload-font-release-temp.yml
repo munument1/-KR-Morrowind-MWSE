@@ -36,31 +36,24 @@ jobs:
           from pathlib import Path
           import base64, hashlib, lzma, os, re
 
-          parts = sorted(Path('/tmp/fontparts/.release-upload/parts').glob('part_*.b64'))
+          all_parts = sorted(Path('/tmp/fontparts/.release-upload/parts').glob('part_*.b64'))
+          parts = [p for p in all_parts if p.read_text(encoding='utf-8', errors='ignore').strip() != 'PLACEHOLDER']
           if not parts:
-              raise SystemExit('no retained font-pack parts found')
-          print(f'Restoring {len(parts)} retained RC6 font-pack parts')
+              raise SystemExit('no retained font-pack data parts found')
+          print(f'Restoring {len(parts)} retained RC6 font-pack data parts')
 
           segments = []
-          for i, p in enumerate(parts):
+          for p in parts:
               clean = re.sub(rb'[^A-Za-z0-9+/=]', b'', p.read_bytes())
-              pads = len(clean) - len(clean.rstrip(b'='))
-              print(f'{p.name}: chars={len(clean)} trailing_pad={pads}')
-              if i != len(parts) - 1:
-                  clean = clean.rstrip(b'=')
+              print(f'{p.name}: chars={len(clean)}')
               segments.append(clean)
 
-          joined = b''.join(segments)
-          joined = joined.rstrip(b'=')
+          joined = b''.join(segments).rstrip(b'=')
           joined += b'=' * ((-len(joined)) % 4)
           stream = base64.b64decode(joined, validate=True)
           if not stream.startswith(b'\xfd7zXZ\x00'):
               raise SystemExit(f'unexpected retained stream header: {stream[:8].hex()}')
-
-          try:
-              payload = lzma.decompress(stream)
-          except Exception as exc:
-              raise SystemExit(f'XZ decompress failed: {exc}')
+          payload = lzma.decompress(stream)
 
           out = Path('/tmp') / os.environ['ASSET']
           out.write_bytes(payload)
