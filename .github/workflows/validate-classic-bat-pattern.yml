@@ -27,7 +27,6 @@ jobs:
           $offset = 0x3457C0
           [byte[]]$source = 0x55,0x8B,0xEC,0x8B,0x4D,0x08,0x0F,0xB7,0x01,0x86,0xC4,0x90,0x80,0xFC,0x81,0x0F,0x82,0xBB,0x00,0x00,0x00,0x80,0xFC,0x9F,0x76,0x17,0x80,0xFC,0xE0,0x0F,0x82,0xAD,0x00,0x00,0x00,0x80,0xFC,0xEF,0x0F,0x87,0xA4,0x00,0x00,0x00,0x80,0xEC,0xC1,0xEB,0x03,0x80,0xEC,0x81,0xD0,0xE4,0x3C,0x40,0x0F,0x82,0x92,0x00,0x00,0x00,0x3C,0xFC,0x77,0x0E,0x3C,0xA0,0x72,0x06,0xFE,0xC4,0x2C
           $bytes = New-Object byte[] ($offset + 4096)
-          # Make the whole-file SHA unrelated to all pinned reference hashes.
           0..255 | ForEach-Object { $bytes[$_] = [byte](($_ * 37 + 11) % 256) }
           [Array]::Copy($source, 0, $bytes, $offset, $source.Length)
           [IO.File]::WriteAllBytes((Join-Path $t 'Morrowind.exe'), $bytes)
@@ -40,9 +39,7 @@ jobs:
           1..10 | ForEach-Object {
             $n=$_; $overlay.Add("[Question $n]"); $overlay.Add("Question=Q$n"); $overlay.Add("AnswerOne=A${n}1"); $overlay.Add("AnswerTwo=A${n}2"); $overlay.Add("AnswerThree=A${n}3"); $overlay.Add('')
           }
-          $overlay.Add('[Level Up]')
-          2..20 | ForEach-Object { $overlay.Add("Level$_=L$_") }
-          $overlay.Add('Default=LD'); $overlay.Add('')
+          $overlay.Add('[Level Up]'); 2..20 | ForEach-Object { $overlay.Add("Level$_=L$_") }; $overlay.Add('Default=LD'); $overlay.Add('')
           $overlay.Add('[Blood]'); $overlay.Add('Texture Name 0=B0'); $overlay.Add('Texture Name 1=B1'); $overlay.Add('Texture Name 2=B2')
 
           $ini=New-Object System.Collections.Generic.List[string]
@@ -79,9 +76,8 @@ jobs:
           if($before -eq $after){throw 'Executable hash did not change'}
 
           $enc=[Text.Encoding]::GetEncoding(949)
-          $text=[IO.File]::ReadAllText((Join-Path $t 'Morrowind.ini'),$enc)
-          if($text -notmatch '(?m)^Question=Q1$'){throw 'INI overlay was not applied'}
-          if($text -notmatch '(?m)^Sound=KEEP_1$'){throw 'Question technical key was not preserved'}
-          if($text -notmatch '(?m)^Model 0=KEEP_MODEL$'){throw 'Blood model key was not preserved'}
-          if($text -notmatch '(?m)^Texture 0=KEEP_TEXTURE$'){throw 'Blood texture key was not preserved'}
-          Write-Host "PASS: unknown whole-file hash accepted only through verified Japanese-localization code pattern."
+          $lines=[IO.File]::ReadAllLines((Join-Path $t 'Morrowind.ini'),$enc)
+          foreach($required in @('Question=Q1','Sound=KEEP_1','Model 0=KEEP_MODEL','Texture 0=KEEP_TEXTURE')){
+            if($lines -notcontains $required){throw "Missing expected INI line: $required"}
+          }
+          Write-Host 'PASS: unknown whole-file hash accepted only through verified Japanese-localization code pattern.'
