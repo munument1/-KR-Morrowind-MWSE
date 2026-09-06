@@ -24,7 +24,7 @@ Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
 - `Data Files/Morrowind_Korean_ReTranslation.top`
 - `Data Files/Morrowind_Korean_ReTranslation.mrk`
 - RC6에서 실제 사용하던 Classic CP949 FNT/TEX 폰트 8개
-- `patch_morrowind_cp949.py` 실행 파일 패처
+- `Apply_CP949_Patch.bat` — Python 설치 없이 더블클릭하는 실행 파일 패처
 - 설치 안내문
 
 Bethesda의 `Morrowind.exe` 자체는 포함하지 않습니다.
@@ -60,13 +60,18 @@ RC7은 기존 Classic CP949 RC6을 기반으로, 최신 OpenMW KR1에서 검증�
 
 ### 3. Morrowind.exe CP949 패치
 
-MCP의 Japanese localization 옵션은 일본어용 DBCS 처리를 준비하는 단계이며, CP949 한글 바이트 범위를 처리하려면 합본에 포함된 `patch_morrowind_cp949.py`를 한 번 더 적용해야 합니다.
+MCP의 Japanese localization 옵션은 일본어용 DBCS 처리를 준비하는 단계이며, CP949 한글 바이트 범위를 처리하려면 합본에 포함된 `Apply_CP949_Patch.bat`을 한 번 실행해야 합니다.
 
-```bash
-py -3 patch_morrowind_cp949.py Morrowind.exe Morrowind.MCP-Korean.exe
-```
+**Python 설치는 필요 없습니다.** BAT 파일이 Windows 기본 PowerShell을 내부적으로 사용합니다.
 
-원본 `Morrowind.exe`를 백업한 뒤 생성된 `Morrowind.MCP-Korean.exe`를 `Morrowind.exe`로 사용합니다.
+사용 방법:
+
+1. `Apply_CP949_Patch.bat`이 `Morrowind.exe`와 같은 게임 폴더에 있는지 확인
+2. `Apply_CP949_Patch.bat` 더블클릭
+3. 지원되는 `Morrowind.exe`인지 SHA-256 확인
+4. 원본을 `Morrowind.exe.cp949-backup`으로 자동 백업
+5. `Morrowind.exe`에 CP949 패치를 제자리 적용
+6. 검증된 MCP Japanese-localization 입력은 패치 후 출력 SHA-256까지 확인
 
 현재 지원 입력 SHA-256:
 
@@ -87,6 +92,8 @@ a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
 ```text
 bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
 ```
+
+`tools/patch_morrowind_cp949.py`는 저장소의 개발/검증용 도구로만 남겨두며 일반 사용자 배포본에는 포함하지 않습니다.
 
 ### 4. 번역 활성화
 
@@ -180,4 +187,4 @@ Classic RC6 ESP를 기준본으로 유지하면서 OpenMW KR1과 INFO 응답을 
 
 ## Status
 
-**v1.0.7-rc7 / Release / single Full ZIP / OpenMW KR1 topic-link sync / RC6 fonts reused / MCP Japanese-localization CP949 patch supported**
+**v1.0.7-rc7 / Release / single Full ZIP / no-Python BAT patcher / OpenMW KR1 topic-link sync / RC6 fonts reused**
