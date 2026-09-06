@@ -3,6 +3,7 @@ import argparse
 import hashlib
 from pathlib import Path
 
+# RC7 release rebuild marker: keep the proven RC6 Classic CP949 font baseline.
 SUPPORTED = {
     "8fe33fb11b6a682721e7456af78eefd228e8b60dc7c9f4253f89a361f8a4dfc5",
     "c3585b91741689057c18ff86a1c3381d47278cd1d81443d38ed3b179c2fa1cd8",
