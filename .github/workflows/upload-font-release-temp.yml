@@ -30,11 +30,15 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin font-release-upload-temp-20260808
+          rm -rf /tmp/fontparts
+          git worktree add --detach /tmp/fontparts "$SOURCE_REF"
           : > /tmp/fontpack.xz
-          mapfile -t parts < <(git ls-tree -r --name-only "$SOURCE_REF" -- .release-upload/parts | sort)
+          shopt -s nullglob
+          parts=(/tmp/fontparts/.release-upload/parts/part_*.b64)
           test "${#parts[@]}" -gt 0
+          printf 'Restoring %d retained RC6 font-pack parts\n' "${#parts[@]}"
           for part in "${parts[@]}"; do
-            git show "$SOURCE_REF:$part" | base64 --decode >> /tmp/fontpack.xz
+            base64 --decode --ignore-garbage "$part" >> /tmp/fontpack.xz
           done
           xz -t /tmp/fontpack.xz
           xz --decompress --stdout /tmp/fontpack.xz > "/tmp/$ASSET"
