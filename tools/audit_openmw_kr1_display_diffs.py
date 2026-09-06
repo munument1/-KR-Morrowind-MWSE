@@ -36,53 +36,60 @@ def find(root: Path, suffix: str, prefer='ReTranslation'):
     xs=ys or xs
     return sorted(xs,key=lambda p:(len(str(p)),str(p)))[0]
 
-def rid(rt,subs,decoder):
+def base_id(rt,subs,decoder):
     if rt==b'SCPT': return decoder((get(subs,b'SCHD') or b'')[:32].split(b'\0',1)[0])
     if rt in (b'MGEF',b'SKIL'):
         p=get(subs,b'INDX'); return p.hex() if p else ''
     p=get(subs,b'NAME')
     return decoder(p) if p else ''
 
+def indexed(records,decoder):
+    out={}; ords=collections.Counter(); skipped=collections.Counter()
+    for idx,rt,rest,subs in records:
+        if rt in (b'TES3',b'INFO',b'DIAL',b'CELL'):
+            skipped[rt.decode('ascii','replace')]+=1; continue
+        ident=base_id(rt,subs,decoder)
+        if not ident:
+            skipped[rt.decode('ascii','replace')]+=1; continue
+        k0=(rt,ident); n=ords[k0]; ords[k0]+=1
+        out[(rt,ident,n)]={'index':idx,'type':rt,'id':ident,'ordinal':n,'subs':subs}
+    return out,skipped
+
 SAFE={(b'GMST',b'STRV'),(b'BOOK',b'TEXT')}
 SAFE_SUBS={b'FNAM',b'DESC'}
+
+def sublists(subs):
+    d=collections.defaultdict(list)
+    for s,p in subs:d[s].append(p)
+    return d
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--openmw-root',type=Path,required=True); ap.add_argument('--cp949-root',type=Path,required=True); ap.add_argument('--out',type=Path,required=True); a=ap.parse_args()
     omw=find(a.openmw_root,'.esp'); cp=find(a.cp949_root,'.esp')
     A=list(iter_records(omw.read_bytes())); B=list(iter_records(cp.read_bytes()))
-    report={'record_count_openmw':len(A),'record_count_cp949':len(B),'record_type_sequence_equal':[x[1] for x in A]==[x[1] for x in B]}
-    counts=collections.Counter(); samples=[]; identity_mismatch=[]; chargen=[]
-    for (ia,ra,_,sa),(ib,rb,_,sb) in zip(A,B):
-        if ra!=rb: continue
-        ida=rid(ra,sa,dec_omw); idb=rid(rb,sb,dec_cp)
-        if ra not in (b'INFO',b'DIAL',b'CELL') and ida!=idb:
-            identity_mismatch.append({'index':ia,'type':ra.decode('ascii','replace'),'openmw_id':ida,'cp949_id':idb})
-        # Compare occurrence-by-occurrence for safe display subrecords.
-        by_a=collections.defaultdict(list); by_b=collections.defaultdict(list)
-        for s,p in sa: by_a[s].append(p)
-        for s,p in sb: by_b[s].append(p)
-        for st in set(by_a)&set(by_b):
+    MA,skipA=indexed(A,dec_omw); MB,skipB=indexed(B,dec_cp)
+    common=set(MA)&set(MB); onlyA=set(MA)-set(MB); onlyB=set(MB)-set(MA)
+    report={'record_count_openmw':len(A),'record_count_cp949':len(B),'mapped_openmw':len(MA),'mapped_cp949':len(MB),'mapped_common':len(common),'only_openmw':len(onlyA),'only_cp949':len(onlyB),'skipped_openmw':dict(skipA),'skipped_cp949':dict(skipB)}
+    counts=collections.Counter(); samples=[]; focus=[]
+    for key in sorted(common,key=lambda k:(k[0],k[1],k[2])):
+        aa,bb=MA[key],MB[key]; ra=aa['type']; ida=aa['id']
+        da,db=sublists(aa['subs']),sublists(bb['subs'])
+        for st in set(da)&set(db):
             if not (((ra,st) in SAFE) or st in SAFE_SUBS): continue
-            for n,(pa,pb) in enumerate(zip(by_a[st],by_b[st])):
+            for n,(pa,pb) in enumerate(zip(da[st],db[st])):
                 ta,tb=dec_omw(pa),dec_cp(pb)
                 if ta==tb: continue
-                key=f'{ra.decode()}/{st.decode()}'
-                counts[key]+=1
-                row={'index':ia,'type':ra.decode(),'field':st.decode(),'occurrence':n,'id':ida or idb,'openmw':ta,'cp949':tb}
-                if len(samples)<400: samples.append(row)
+                label=f'{ra.decode()}/{st.decode()}'; counts[label]+=1
+                row={'type':ra.decode(),'field':st.decode(),'occurrence':n,'id':ida,'record_ordinal':aa['ordinal'],'openmw':ta,'cp949':tb}
+                if len(samples)<1200:samples.append(row)
                 low=(ida+' '+ta+' '+tb).lower()
-                if any(k in low for k in ('chargen','class','quiz','직업','지역','region','seyda','bitter coast','ascadian','grazelands','ashlands')):
-                    chargen.append(row)
-    report['safe_display_diff_counts']=dict(counts)
-    report['safe_display_diff_total']=sum(counts.values())
-    report['identity_mismatch_count']=len(identity_mismatch)
-    report['identity_mismatch_samples']=identity_mismatch[:100]
-    report['samples']=samples
-    report['chargen_region_samples']=chargen[:250]
-    a.out.parent.mkdir(parents=True,exist_ok=True)
-    a.out.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-    print(json.dumps({k:report[k] for k in ('record_count_openmw','record_count_cp949','record_type_sequence_equal','safe_display_diff_counts','safe_display_diff_total','identity_mismatch_count')},ensure_ascii=False,indent=2))
-    print('CHARGEN/REGION SAMPLES')
-    for row in report['chargen_region_samples'][:80]:
-        print(json.dumps(row,ensure_ascii=False))
-if __name__=='__main__': main()
+                if any(k in low for k in ('chargen','class','quiz','job','직업','지역','region','seyda','bitter coast','ascadian','grazelands','ashlands','question','generate')):
+                    focus.append(row)
+    report['safe_display_diff_counts']=dict(counts); report['safe_display_diff_total']=sum(counts.values()); report['samples']=samples; report['focus_samples']=focus[:500]
+    report['only_openmw_samples']=[{'type':k[0].decode(),'id':k[1],'ordinal':k[2]} for k in sorted(onlyA,key=lambda k:(k[0],k[1],k[2]))[:100]]
+    report['only_cp949_samples']=[{'type':k[0].decode(),'id':k[1],'ordinal':k[2]} for k in sorted(onlyB,key=lambda k:(k[0],k[1],k[2]))[:100]]
+    a.out.parent.mkdir(parents=True,exist_ok=True); a.out.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    print(json.dumps({k:report[k] for k in ('record_count_openmw','record_count_cp949','mapped_openmw','mapped_cp949','mapped_common','only_openmw','only_cp949','safe_display_diff_counts','safe_display_diff_total')},ensure_ascii=False,indent=2))
+    print('FOCUS SAMPLES')
+    for row in report['focus_samples'][:160]:print(json.dumps(row,ensure_ascii=False))
+if __name__=='__main__':main()
