@@ -30,13 +30,14 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin font-release-upload-temp-20260808
-          : > /tmp/fontpack.b64
+          : > /tmp/fontpack.xz
           mapfile -t parts < <(git ls-tree -r --name-only "$SOURCE_REF" -- .release-upload/parts | sort)
           test "${#parts[@]}" -gt 0
           for part in "${parts[@]}"; do
-            git show "$SOURCE_REF:$part" >> /tmp/fontpack.b64
+            git show "$SOURCE_REF:$part" | base64 --decode >> /tmp/fontpack.xz
           done
-          base64 --decode /tmp/fontpack.b64 > "/tmp/$ASSET"
+          xz -t /tmp/fontpack.xz
+          xz --decompress --stdout /tmp/fontpack.xz > "/tmp/$ASSET"
           echo "$EXPECTED_SHA  /tmp/$ASSET" | sha256sum -c -
           unzip -tq "/tmp/$ASSET"
 
