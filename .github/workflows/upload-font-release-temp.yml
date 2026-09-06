@@ -17,57 +17,56 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: v1.0.7-rc7-classic-cp949
       REPO: ${{ github.repository }}
-      EXPECTED_SHA: 3a7d2442d43d7ed9e0b42d6d8d75068340b00893e06bb2fa696d4ac440bbeee7
+      RC6_TAG: v1.0.7-rc6-classic-cp949-pre1
+      RC6_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
       ASSET: Morrowind_CP949_Classic_Fonts.zip
-      SOURCE_REF: origin/font-release-upload-temp-20260808
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Restore exact RC6 font pack from retained parts
+      - name: Recover the RC6 font payload
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin font-release-upload-temp-20260808
-          rm -rf /tmp/fontparts
-          git worktree add --detach /tmp/fontparts "$SOURCE_REF"
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, hashlib, lzma, os, re
+          rm -rf /tmp/rc6 /tmp/nested /tmp/fontroot
+          mkdir -p /tmp/rc6 /tmp/nested /tmp/fontroot
+          gh release download "$RC6_TAG" --repo "$REPO" --pattern "$RC6_ASSET" --dir /tmp
+          unzip -q "/tmp/$RC6_ASSET" -d /tmp/rc6
 
-          all_parts = sorted(Path('/tmp/fontparts/.release-upload/parts').glob('part_*.b64'))
-          parts = [p for p in all_parts if p.read_text(encoding='utf-8', errors='ignore').strip() != 'PLACEHOLDER']
-          if not parts:
-              raise SystemExit('no retained font-pack data parts found')
-          print(f'Restoring {len(parts)} retained RC6 font-pack data parts')
+          echo '=== RC6 outer package files ==='
+          find /tmp/rc6 -maxdepth 5 -type f -printf '%P\n' | sort
 
-          segments = []
-          for p in parts:
-              clean = re.sub(rb'[^A-Za-z0-9+/=]', b'', p.read_bytes())
-              print(f'{p.name}: chars={len(clean)}')
-              segments.append(clean)
+          # Inspect every nested ZIP in the RC6 package as well.
+          i=0
+          while IFS= read -r -d '' z; do
+            d="/tmp/nested/$i"
+            mkdir -p "$d"
+            unzip -q "$z" -d "$d" || true
+            echo "=== nested ZIP: ${z#/tmp/rc6/} ==="
+            find "$d" -maxdepth 6 -type f -printf '%P\n' | sort
+            i=$((i+1))
+          done < <(find /tmp/rc6 -type f -iname '*.zip' -print0)
 
-          joined = b''.join(segments).rstrip(b'=')
-          joined += b'=' * ((-len(joined)) % 4)
-          stream = base64.b64decode(joined, validate=True)
-          if not stream.startswith(b'\xfd7zXZ\x00'):
-              raise SystemExit(f'unexpected retained stream header: {stream[:8].hex()}')
-          payload = lzma.decompress(stream)
+          # Collect the exact RC6 FNT/TEX files without modifying their bytes.
+          mapfile -t fontfiles < <(find /tmp/rc6 /tmp/nested -type f \( -iname '*.fnt' -o -iname '*.tex' \) | sort)
+          if [[ ${#fontfiles[@]} -eq 0 ]]; then
+            echo 'No FNT/TEX files were found inside the RC6 release package.' >&2
+            exit 44
+          fi
+          printf 'Found %d RC6 font files\n' "${#fontfiles[@]}"
+          printf '%s\n' "${fontfiles[@]}"
 
-          out = Path('/tmp') / os.environ['ASSET']
-          out.write_bytes(payload)
-          got = hashlib.sha256(payload).hexdigest()
-          expected = os.environ['EXPECTED_SHA']
-          print('font pack SHA-256:', got)
-          if got != expected:
-              raise SystemExit(f'font-pack SHA mismatch: {got} != {expected}')
-          PY
+          mkdir -p '/tmp/fontroot/Data Files/Fonts'
+          for f in "${fontfiles[@]}"; do
+            cp -p "$f" "/tmp/fontroot/Data Files/Fonts/$(basename "$f")"
+          done
+          (cd /tmp/fontroot && zip -q -9 -r "/tmp/$ASSET" 'Data Files')
           unzip -tq "/tmp/$ASSET"
+          sha256sum "/tmp/$ASSET"
+          sha256sum '/tmp/fontroot/Data Files/Fonts/'* | sort
 
-      - name: Upload RC6 font pack to RC7
+      - name: Upload RC6 font files unchanged to RC7
         shell: bash
         run: |
           set -euo pipefail
           gh release upload "$TAG" "/tmp/$ASSET" --clobber --repo "$REPO"
-          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[] | select(.name==env.ASSET) | {name: .name, size: .size}'
+          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[] | select(.name==env.ASSET) | {name: .name, size: .size, digest: .digest}'
