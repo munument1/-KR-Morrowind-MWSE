@@ -35,6 +35,9 @@ jobs:
           if($known -contains $hash){throw 'Fixture unexpectedly matched a known whole-file hash'}
           Set-Content -LiteralPath (Join-Path $t 'input.sha256') -Value $hash -NoNewline
 
+          # Simulate a user who already has a backup from an earlier patch attempt.
+          Set-Content -LiteralPath (Join-Path $t 'Morrowind.exe.cp949-backup') -Value 'KEEP_EXISTING_BACKUP' -NoNewline
+
           $overlay=New-Object System.Collections.Generic.List[string]
           1..10 | ForEach-Object {
             $n=$_; $overlay.Add("[Question $n]"); $overlay.Add("Question=Q$n"); $overlay.Add("AnswerOne=A${n}1"); $overlay.Add("AnswerTwo=A${n}2"); $overlay.Add("AnswerThree=A${n}3"); $overlay.Add('')
@@ -54,16 +57,20 @@ jobs:
           [IO.File]::WriteAllLines((Join-Path $t 'Morrowind_Korean_INI.ini'),$overlay,$enc)
           [IO.File]::WriteAllLines((Join-Path $t 'Morrowind.ini'),$ini,$enc)
 
-      - name: Run BAT against unknown whole-file hash
+      - name: Run BAT against unknown whole-file hash with existing backup
         shell: cmd
         working-directory: build\pattern-test
         run: echo.|Apply_CP949_Patch.bat
 
-      - name: Verify code-pattern patch and backups
+      - name: Verify code-pattern patch and backup rollover
         shell: pwsh
         run: |
           $t = Resolve-Path build\pattern-test
-          if(!(Test-Path (Join-Path $t 'Morrowind.exe.cp949-backup'))){throw 'Executable backup was not created'}
+          $baseBackup=Join-Path $t 'Morrowind.exe.cp949-backup'
+          $newBackup=Join-Path $t 'Morrowind.exe.cp949-backup.1'
+          if(!(Test-Path $baseBackup)){throw 'Existing executable backup disappeared'}
+          if((Get-Content $baseBackup -Raw) -ne 'KEEP_EXISTING_BACKUP'){throw 'Existing executable backup was overwritten'}
+          if(!(Test-Path $newBackup)){throw 'Additional executable backup was not created'}
           if(!(Test-Path (Join-Path $t 'Morrowind.ini.cp949-backup'))){throw 'INI backup was not created'}
 
           $offset=0x3457C0
@@ -75,9 +82,12 @@ jobs:
           $after=(Get-FileHash -Algorithm SHA256 (Join-Path $t 'Morrowind.exe')).Hash.ToLowerInvariant()
           if($before -eq $after){throw 'Executable hash did not change'}
 
+          $backupHash=(Get-FileHash -Algorithm SHA256 $newBackup).Hash.ToLowerInvariant()
+          if($backupHash -ne $before){throw 'Additional executable backup does not match pre-patch executable'}
+
           $enc=[Text.Encoding]::GetEncoding(949)
           $lines=[IO.File]::ReadAllLines((Join-Path $t 'Morrowind.ini'),$enc)
           foreach($required in @('Question=Q1','Sound=KEEP_1','Model 0=KEEP_MODEL','Texture 0=KEEP_TEXTURE')){
             if($lines -notcontains $required){throw "Missing expected INI line: $required"}
           }
-          Write-Host 'PASS: unknown whole-file hash accepted only through verified Japanese-localization code pattern.'
+          Write-Host 'PASS: verified code pattern accepted, existing backup preserved, additional backup created.'
