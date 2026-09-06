@@ -1,0 +1,87 @@
+name: Validate CP949 code-pattern patch path
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/Apply_CP949_Patch.bat'
+      - '.github/workflows/validate-classic-bat-pattern.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-pattern-path:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create unknown-hash Japanese-localization fixture
+        shell: pwsh
+        run: |
+          $t = Join-Path (Resolve-Path .) 'build\pattern-test'
+          New-Item -ItemType Directory -Force $t | Out-Null
+          Copy-Item tools\Apply_CP949_Patch.bat $t\Apply_CP949_Patch.bat
+
+          $offset = 0x3457C0
+          [byte[]]$source = 0x55,0x8B,0xEC,0x8B,0x4D,0x08,0x0F,0xB7,0x01,0x86,0xC4,0x90,0x80,0xFC,0x81,0x0F,0x82,0xBB,0x00,0x00,0x00,0x80,0xFC,0x9F,0x76,0x17,0x80,0xFC,0xE0,0x0F,0x82,0xAD,0x00,0x00,0x00,0x80,0xFC,0xEF,0x0F,0x87,0xA4,0x00,0x00,0x00,0x80,0xEC,0xC1,0xEB,0x03,0x80,0xEC,0x81,0xD0,0xE4,0x3C,0x40,0x0F,0x82,0x92,0x00,0x00,0x00,0x3C,0xFC,0x77,0x0E,0x3C,0xA0,0x72,0x06,0xFE,0xC4,0x2C
+          $bytes = New-Object byte[] ($offset + 4096)
+          # Make the whole-file SHA unrelated to all pinned reference hashes.
+          0..255 | ForEach-Object { $bytes[$_] = [byte](($_ * 37 + 11) % 256) }
+          [Array]::Copy($source, 0, $bytes, $offset, $source.Length)
+          [IO.File]::WriteAllBytes((Join-Path $t 'Morrowind.exe'), $bytes)
+          $hash=(Get-FileHash -Algorithm SHA256 (Join-Path $t 'Morrowind.exe')).Hash.ToLowerInvariant()
+          $known=@('8fe33fb11b6a682721e7456af78eefd228e8b60dc7c9f4253f89a361f8a4dfc5','c3585b91741689057c18ff86a1c3381d47278cd1d81443d38ed3b179c2fa1cd8','a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c')
+          if($known -contains $hash){throw 'Fixture unexpectedly matched a known whole-file hash'}
+          Set-Content -LiteralPath (Join-Path $t 'input.sha256') -Value $hash -NoNewline
+
+          $overlay=New-Object System.Collections.Generic.List[string]
+          1..10 | ForEach-Object {
+            $n=$_; $overlay.Add("[Question $n]"); $overlay.Add("Question=Q$n"); $overlay.Add("AnswerOne=A${n}1"); $overlay.Add("AnswerTwo=A${n}2"); $overlay.Add("AnswerThree=A${n}3"); $overlay.Add('')
+          }
+          $overlay.Add('[Level Up]')
+          2..20 | ForEach-Object { $overlay.Add("Level$_=L$_") }
+          $overlay.Add('Default=LD'); $overlay.Add('')
+          $overlay.Add('[Blood]'); $overlay.Add('Texture Name 0=B0'); $overlay.Add('Texture Name 1=B1'); $overlay.Add('Texture Name 2=B2')
+
+          $ini=New-Object System.Collections.Generic.List[string]
+          $ini.Add('[General]'); $ini.Add('Keep=YES'); $ini.Add('')
+          1..10 | ForEach-Object {
+            $n=$_; $ini.Add("[Question $n]"); $ini.Add('Question=OLD'); $ini.Add('AnswerOne=OLD'); $ini.Add('AnswerTwo=OLD'); $ini.Add('AnswerThree=OLD'); $ini.Add("Sound=KEEP_$n"); $ini.Add('')
+          }
+          $ini.Add('[Level Up]'); 2..20 | ForEach-Object { $ini.Add("Level$_=OLD") }; $ini.Add('Default=OLD'); $ini.Add('KeepLevel=YES'); $ini.Add('')
+          $ini.Add('[Blood]'); $ini.Add('Texture Name 0=OLD'); $ini.Add('Texture Name 1=OLD'); $ini.Add('Texture Name 2=OLD'); $ini.Add('Model 0=KEEP_MODEL'); $ini.Add('Texture 0=KEEP_TEXTURE')
+
+          $enc=[Text.Encoding]::GetEncoding(949)
+          [IO.File]::WriteAllLines((Join-Path $t 'Morrowind_Korean_INI.ini'),$overlay,$enc)
+          [IO.File]::WriteAllLines((Join-Path $t 'Morrowind.ini'),$ini,$enc)
+
+      - name: Run BAT against unknown whole-file hash
+        shell: cmd
+        working-directory: build\pattern-test
+        run: echo.|Apply_CP949_Patch.bat
+
+      - name: Verify code-pattern patch and backups
+        shell: pwsh
+        run: |
+          $t = Resolve-Path build\pattern-test
+          if(!(Test-Path (Join-Path $t 'Morrowind.exe.cp949-backup'))){throw 'Executable backup was not created'}
+          if(!(Test-Path (Join-Path $t 'Morrowind.ini.cp949-backup'))){throw 'INI backup was not created'}
+
+          $offset=0x3457C0
+          [byte[]]$patch = 0x55,0x89,0xE5,0x8B,0x4D,0x08,0x0F,0xB7,0x01,0x86,0xC4,0x80,0xFC,0x81,0x72,0x34,0x80,0xFC,0xFD,0x77,0x2F,0x80,0xEC,0x81,0x3C,0x41,0x72,0x28,0x3C,0x5A,0x76,0x14,0x3C,0x61,0x72,0x20,0x3C,0x7A,0x76,0x10,0x3C,0x81,0x72,0x18,0x3C,0xFE,0x77,0x14,0x2C,0x4D,0xEB,0x06,0x2C,0x41,0xEB,0x02,0x2C,0x47,0x50,0x3E,0x8B,0x4D,0x0C,0xE9,0x15,0x00,0x00,0x00,0xE9,0x87,0x00,0x00,0x00
+          $bytes=[IO.File]::ReadAllBytes((Join-Path $t 'Morrowind.exe'))
+          for($i=0;$i -lt $patch.Length;$i++){if($bytes[$offset+$i] -ne $patch[$i]){throw "Patched byte mismatch at $i"}}
+
+          $before=(Get-Content (Join-Path $t 'input.sha256') -Raw).Trim()
+          $after=(Get-FileHash -Algorithm SHA256 (Join-Path $t 'Morrowind.exe')).Hash.ToLowerInvariant()
+          if($before -eq $after){throw 'Executable hash did not change'}
+
+          $enc=[Text.Encoding]::GetEncoding(949)
+          $text=[IO.File]::ReadAllText((Join-Path $t 'Morrowind.ini'),$enc)
+          if($text -notmatch '(?m)^Question=Q1$'){throw 'INI overlay was not applied'}
+          if($text -notmatch '(?m)^Sound=KEEP_1$'){throw 'Question technical key was not preserved'}
+          if($text -notmatch '(?m)^Model 0=KEEP_MODEL$'){throw 'Blood model key was not preserved'}
+          if($text -notmatch '(?m)^Texture 0=KEEP_TEXTURE$'){throw 'Blood texture key was not preserved'}
+          Write-Host "PASS: unknown whole-file hash accepted only through verified Japanese-localization code pattern."
