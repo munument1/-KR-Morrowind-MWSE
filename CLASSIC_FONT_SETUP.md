@@ -4,13 +4,13 @@ Classic Morrowind에서 CP949 한국어를 실제로 표시하려면 **CP949 글
 
 ## 일반 사용자 권장 방식
 
-일반 사용자는 폰트 생성 스크립트를 실행하지 않는 것을 기본으로 합니다. 정식 배포에서는 사전 생성된 Classic CP949 폰트팩을 Release asset으로 제공하고, 사용자는 그 ZIP을 MO2로 설치하면 됩니다.
-
-권장 asset 이름:
+RC7 Release에는 사전 생성된 폰트팩이 포함되어 있습니다.
 
 ```text
 Morrowind_CP949_Classic_Fonts.zip
 ```
+
+이 폰트팩은 새로 생성한 변형이 아니라 **RC6 배포 ZIP에서 실제 사용하던 Classic CP949 FNT/TEX 8개를 내용 수정 없이 그대로 재사용**한 것입니다. RC7은 폰트 엔진이나 CP949 DBCS atlas 형식을 바꾸지 않았으므로 RC6 폰트를 그대로 사용합니다.
 
 권장 구조:
 
@@ -24,30 +24,44 @@ Data Files/
     century_gothic_font_regular.fnt
     century_gothic_font_regular_0_Lod_A.tex
     daedric_font.fnt
-    Daedric_font_0_Lod_A.tex
+    daedric_font_0_Lod_A.tex
 ```
 
-Classic 쪽에서는 기존 `Morrowind.ini`의 폰트 이름을 바꾸지 않는 것을 기준으로 합니다. 패키지가 원래 경로에 호환 FNT/TEX를 제공하도록 합니다.
+Classic 쪽에서는 기존 `Morrowind.ini`의 폰트 이름을 바꾸지 않는 것을 기준으로 합니다. 폰트팩이 원래 경로에 호환 FNT/TEX를 제공합니다.
+
+## RC6 폰트 재사용 검증
+
+RC7 릴리스 워크플로는 RC6 릴리스 패키지에서 폰트 8개를 직접 꺼내고 각 파일의 SHA-256을 고정값과 비교합니다. 하나라도 RC6 원본과 다르면 릴리스 작업이 실패합니다.
+
+현재 RC7 폰트 ZIP SHA-256:
+
+```text
+3f55fc91f4f27182906baef64b1747d6a3931c2fdd0bc36f7e60fa3ae6b11b8c
+```
+
+ZIP 컨테이너는 재현 가능하도록 다시 포장했지만 내부 FNT/TEX 바이트는 RC6과 동일합니다.
 
 ## clean install에 필요한 것
 
-1. CP949 대응 `Morrowind.exe`
-2. 사전 생성 Classic CP949 폰트팩
-3. `Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.esp`가 들어 있는 번역 패키지
+1. Morrowind GOTY 1.6.0.1820
+2. MCP Japanese localization compatibility가 적용된 자신의 `Morrowind.exe`
+3. RC7 Release의 `Morrowind_CP949_Executable_Patcher_v1.0.7-rc7.zip`
+4. RC7 Release의 `Morrowind_CP949_Classic_Fonts.zip`
+5. RC7 Release의 `Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip`
 
-셋 중 폰트가 빠지면 엔진이 CP949 바이트를 처리하더라도 한글 글리프를 올바르게 표시할 수 없습니다.
+실행 파일, 폰트, 번역 중 하나라도 빠지면 정상적인 Classic CP949 환경이 완성되지 않습니다.
 
-## 현재 RC6 Pre-release 주의
+## 설치
 
-Release asset 목록에 `Morrowind_CP949_Classic_Fonts.zip` 같은 사전 생성 폰트팩이 아직 없다면, 그 시점의 RC6 Pre-release는 기존 테스트용 한글 폰트가 이미 설치된 환경에서는 사용할 수 있지만 **clean install 사용자용 배포는 아직 완결되지 않은 상태**입니다.
+MO2 사용 시 `Morrowind_CP949_Classic_Fonts.zip`을 별도 모드로 설치하고 번역 모드와 함께 활성화합니다.
 
-폰트팩이 Release에 추가되면 일반 사용자는 생성 도구 없이 그대로 설치하는 방식이 기준입니다.
+직접 설치한다면 `Data Files/Fonts`의 동명 파일을 먼저 백업한 뒤 폰트팩의 `Data Files/Fonts` 내용을 게임 폴더에 병합합니다.
 
 ## 재현·개발·커스텀 글꼴용 선택 도구
 
-`tools/build_classic_cp949_fonts.py`는 일반 사용자 필수 단계가 아닙니다. 다음 용도로만 유지합니다.
+일반 사용자는 폰트 생성 스크립트를 실행할 필요가 없습니다. `tools/build_classic_cp949_fonts.py`는 다음 용도로만 유지합니다.
 
-- 배포 폰트팩 재현
+- 배포 폰트 구조 재현
 - 개발 검증
 - 다른 TTF로 커스텀 폰트 제작
 - FNT/TEX 구조 실험
@@ -80,10 +94,4 @@ python tools\build_classic_cp949_fonts.py ^
 - 현대 한글 11,172자 coverage 검증
 - 생성 파일 SHA-256 manifest 작성
 
-개발 환경에서 이 빌더로 생성한 네 FNT는 과거 런타임 확인 Pilot의 네 FNT와 **바이트 단위 동일**하게 재현됐습니다. TEX 픽셀은 선택한 TTF와 렌더러에 따라 달라질 수 있습니다.
-
-## 설치
-
-MO2 사용 시 사전 생성 폰트팩 ZIP을 별도 모드로 설치해 번역 모드와 함께 활성화합니다. 직접 설치한다면 기존 `Data Files/Fonts`의 동명 파일을 먼저 백업하세요.
-
-일반 사용자 문서와 Release에서는 **사전 생성 폰트팩 설치가 기본**, 빌더는 **선택적 재현 도구**로 취급합니다.
+일반 사용자 경로는 **Release의 RC6 재사용 사전 생성 폰트팩 설치**이고, 이 빌더는 선택적인 개발 도구입니다.
