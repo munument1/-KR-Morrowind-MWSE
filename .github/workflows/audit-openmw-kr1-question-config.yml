@@ -1,0 +1,39 @@
+name: Audit OpenMW KR1 chargen questions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-openmw-kr1-question-config.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      OPENMW_REPO: munument1/-KR-openmw
+      OPENMW_TAG: openmw-0.51.0-kr1
+      OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download KR1 Full
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/openmw
+          gh release download "$OPENMW_TAG" --repo "$OPENMW_REPO" --pattern "$OPENMW_ASSET" --dir build
+          unzip -q "build/$OPENMW_ASSET" -d build/openmw
+      - name: Inspect question localization
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== CFG ==='
+          cfg="$(find build/openmw -type f -name 'openmw.cfg' -print -quit)"
+          test -n "$cfg"
+          grep -nEi 'Question|AnswerOne|AnswerTwo|AnswerThree|clawsnare|classchoice|chargen|fallback' "$cfg" | head -300 || true
+          echo '=== ALL TEXT RESOURCES ==='
+          grep -RIn --binary-files=without-match -Ei 'clawsnare|AnswerOne|Question 1|One summer afternoon|embarrassing nickname|직업 자동 생성|당신의 성격' build/openmw | head -400 || true
