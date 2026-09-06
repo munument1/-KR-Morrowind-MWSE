@@ -36,6 +36,16 @@ jobs:
           nested="$(find build/cp949-outer -type f -name 'Korean Translation.zip' -print -quit)"
           test -n "$nested"
           unzip -q "$nested" -d build/cp949
+      - name: Inspect KR1 full package
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== FILE LIST ==='
+          find build/openmw -type f -printf '%P\n' | sort
+          echo '=== TEXT FILES WITH KOREAN ==='
+          grep -RIl --binary-files=without-match -E '[가-힣]' build/openmw | sort || true
+          echo '=== CHARGEN / CLASS / REGION MATCHES ==='
+          grep -RIn --binary-files=without-match -E 'chargen|class|quiz|직업|지역|Bitter Coast|Ascadian|Seyda Neen' build/openmw | head -250 || true
       - name: Audit display fields
         shell: bash
         run: |
