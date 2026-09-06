@@ -1,0 +1,119 @@
+name: Create RC7 Classic CP949 pre-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/port_openmw_kr1_topic_links.py'
+      - '.github/workflows/create-rc7-prerelease.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      OPENMW_REPO: munument1/-KR-openmw
+      OPENMW_TAG: openmw-0.51.0-kr1
+      OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
+      CP949_REPO: munument1/Morrowind-CP949
+      CP949_TAG: v1.0.7-rc6-classic-cp949-pre1
+      CP949_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
+      TAG: v1.0.7-rc7-classic-cp949-pre1
+      OUT_DIR: build/rc7
+      RELEASE_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Download pinned reference assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/downloads/openmw build/downloads/cp949 build/input/openmw build/input/cp949
+          gh release download "$OPENMW_TAG" --repo "$OPENMW_REPO" --pattern "$OPENMW_ASSET" --dir build/downloads/openmw
+          gh release download "$CP949_TAG" --repo "$CP949_REPO" --pattern "$CP949_ASSET" --dir build/downloads/cp949
+          unzip -q "build/downloads/openmw/$OPENMW_ASSET" -d build/input/openmw
+          unzip -q "build/downloads/cp949/$CP949_ASSET" -d build/input/cp949-outer
+          nested="$(find build/input/cp949-outer -type f -name 'Korean Translation.zip' -print -quit)"
+          test -n "$nested"
+          unzip -q "$nested" -d build/input/cp949
+
+      - name: Build and validate RC7 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$OUT_DIR"
+          python3 tools/port_openmw_kr1_topic_links.py \
+            --openmw-root build/input/openmw \
+            --cp949-root build/input/cp949 \
+            --output-dir "$OUT_DIR"
+          validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
+          source_zip="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949.zip"
+          test "$(jq -r '.status' "$validation")" = PASS
+          test "$(jq -r '.output.marker_only_info_changed' "$validation")" = 7692
+          test "$(jq -r '.output.content_changes_skipped' "$validation")" = 177
+          test "$(jq -r '.output.top_rows' "$validation")" = 5843
+          test "$(jq -r '.output.mrk_rows' "$validation")" = 376
+          test "$(jq -r '.output.unresolved_markers | length' "$validation")" = 0
+          test "$(jq -r '.checks.compiled_scripts_byte_identical' "$validation")" = true
+          test "$(jq -r '.checks.classic_voice_wilderness_fix_preserved' "$validation")" = true
+          unzip -tq "$source_zip"
+          cp "$source_zip" "$OUT_DIR/$RELEASE_ZIP"
+          sha256sum "$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" > "$OUT_DIR/SHA256SUMS.txt"
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
+          zip_hash="$(sha256sum "$OUT_DIR/$RELEASE_ZIP" | awk '{print $1}')"
+          esp_hash="$(jq -r '.output.esp_sha256' "$validation")"
+          top_hash="$(jq -r '.output.top_sha256' "$validation")"
+          mrk_hash="$(jq -r '.output.mrk_sha256' "$validation")"
+          cat > "$OUT_DIR/RELEASE_NOTES.md" <<EOF
+          RC6 Classic CP949를 기반으로 최신 OpenMW KR1에서 검증된 대화 토픽/키워드 링크 수정만 이식한 RC7 시험판입니다.
+
+          ## 핵심 변경
+          - 번역문 자체는 동일하고 명시적 \`@topic#\` 링크만 추가된 INFO 7,692개 반영
+          - OpenMW KR1 최종 TOP 5,843행을 CP949로 변환해 포함
+          - OpenMW KR1 최종 MRK 376행을 CP949로 변환해 포함
+          - 일반 번역 내용이 달라진 INFO 177개는 의도적으로 제외
+          - Classic CP949 RC6 compiled SCPT 236개 바이트 그대로 보존
+          - Classic 전용 Voice \`ANAM=\"Wilderness\"\` 수정 보존
+
+          ## 정적 검증
+          - 미해결 토픽 마커: 0
+          - CP949 변환 fallback: 0
+          - compiled SCPT byte-identical: PASS
+          - DIAL 구조 보존: PASS
+          - ZIP 무결성 검사: PASS
+
+          ## 중요
+          정적 검증은 PASS했지만 Classic Morrowind 전체 실게임 회귀 테스트는 아직 완료되지 않았습니다. 우선 확인 대상은 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르, Tribunal/Bloodmoon 대화 링크입니다.
+
+          ## SHA-256
+          - ZIP: \`$zip_hash\`
+          - ESP: \`$esp_hash\`
+          - TOP: \`$top_hash\`
+          - MRK: \`$mrk_hash\`
+          EOF
+
+      - name: Create or update RC7 pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
+          assets=("$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7 Pre-release' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7 Pre-release' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease "${assets[@]}"
+          fi
