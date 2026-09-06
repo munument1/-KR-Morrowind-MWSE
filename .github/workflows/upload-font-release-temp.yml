@@ -1,9 +1,8 @@
-name: Temporary RC6 font release upload
+name: Upload Classic CP949 font pack to RC7
 
 on:
   push:
-    branches:
-      - font-release-upload-temp-20260808
+    branches: [main]
     paths:
       - '.github/workflows/upload-font-release-temp.yml'
   workflow_dispatch:
@@ -17,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      TAG: v1.0.7-rc6-classic-cp949-pre1
+      TAG: v1.0.7-rc7-classic-cp949
       REPO: ${{ github.repository }}
       EXPECTED_SHA: 3a7d2442d43d7ed9e0b42d6d8d75068340b00893e06bb2fa696d4ac440bbeee7
       ASSET: Morrowind_CP949_Classic_Fonts.zip
@@ -26,14 +25,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Find exact font pack already stored on GitHub
+      - name: Find exact prebuilt font pack already stored on GitHub
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/search
           FOUND=''
 
-          # Current/older release assets.
           gh api --paginate "repos/$REPO/releases?per_page=100" > /tmp/releases.json
           mapfile -t urls < <(jq -r --arg n "$ASSET" '.[] | .assets[]? | select(.name==$n) | .browser_download_url' /tmp/releases.json)
           for u in "${urls[@]}"; do
@@ -44,7 +42,6 @@ jobs:
             fi
           done
 
-          # GitHub Actions artifacts.
           if [[ -z "$FOUND" ]]; then
             gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" > /tmp/artifacts-pages.json
             jq -s '{artifacts: [.[].artifacts[]?]}' /tmp/artifacts-pages.json > /tmp/artifacts.json
@@ -71,7 +68,7 @@ jobs:
           cp "$FOUND" "/tmp/$ASSET"
           echo "$EXPECTED_SHA  /tmp/$ASSET" | sha256sum -c -
 
-      - name: Upload exact asset to current pre-release
+      - name: Upload exact font asset to RC7
         shell: bash
         run: |
           set -euo pipefail
