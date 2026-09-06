@@ -1,4 +1,4 @@
-name: Create RC7 Classic CP949 pre-release
+name: Create RC7 Classic CP949 release
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       CP949_REPO: munument1/Morrowind-CP949
       CP949_TAG: v1.0.7-rc6-classic-cp949-pre1
       CP949_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
-      TAG: v1.0.7-rc7-classic-cp949-pre1
+      TAG: v1.0.7-rc7-classic-cp949
       OUT_DIR: build/rc7
       RELEASE_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip
     steps:
@@ -60,7 +60,10 @@ jobs:
           test "$(jq -r '.output.top_rows' "$validation")" = 5843
           test "$(jq -r '.output.mrk_rows' "$validation")" = 376
           test "$(jq -r '.output.unresolved_markers | length' "$validation")" = 0
+          test "$(jq -r '.cp949_fallbacks | length' "$validation")" = 0
           test "$(jq -r '.checks.compiled_scripts_byte_identical' "$validation")" = true
+          test "$(jq -r '.checks.classic_dials_byte_semantics_preserved' "$validation")" = true
+          test "$(jq -r '.checks.only_expected_info_names_changed' "$validation")" = true
           test "$(jq -r '.checks.classic_voice_wilderness_fix_preserved' "$validation")" = true
           unzip -tq "$source_zip"
           cp "$source_zip" "$OUT_DIR/$RELEASE_ZIP"
@@ -76,25 +79,27 @@ jobs:
           top_hash="$(jq -r '.output.top_sha256' "$validation")"
           mrk_hash="$(jq -r '.output.mrk_sha256' "$validation")"
           cat > "$OUT_DIR/RELEASE_NOTES.md" <<EOF
-          RC6 Classic CP949를 기반으로 최신 OpenMW KR1에서 검증된 대화 토픽/키워드 링크 수정만 이식한 RC7 시험판입니다.
+          Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7 릴리스입니다.
 
-          ## 핵심 변경
-          - 번역문 자체는 동일하고 명시적 \`@topic#\` 링크만 추가된 INFO 7,692개 반영
-          - OpenMW KR1 최종 TOP 5,843행을 CP949로 변환해 포함
-          - OpenMW KR1 최종 MRK 376행을 CP949로 변환해 포함
-          - 일반 번역 내용이 달라진 INFO 177개는 의도적으로 제외
-          - Classic CP949 RC6 compiled SCPT 236개 바이트 그대로 보존
-          - Classic 전용 Voice \`ANAM=\"Wilderness\"\` 수정 보존
+          RC6 Classic CP949를 기반으로, 최신 OpenMW KR1에서 실제 사용하도록 정리된 다국어 토픽/키워드 링크 수정만 이식했습니다. 일반 번역 문장 수정은 섞지 않고 Classic 전용 compiled script 및 호환 보정을 그대로 유지합니다.
 
-          ## 정적 검증
-          - 미해결 토픽 마커: 0
-          - CP949 변환 fallback: 0
-          - compiled SCPT byte-identical: PASS
-          - DIAL 구조 보존: PASS
-          - ZIP 무결성 검사: PASS
+          ## RC7 핵심 변경
+          - 번역문은 동일하고 명시적 \`@topic#\` 링크만 추가된 INFO **7,692개** 반영
+          - OpenMW KR1 최종 TOP **5,843행**을 CP949로 변환해 포함
+          - OpenMW KR1 최종 MRK **376행**을 CP949로 변환해 포함
+          - 일반 번역 내용이 달라진 INFO **177개는 의도적으로 제외**
+          - Classic CP949 RC6 compiled SCPT **236개 바이트 그대로 보존**
+          - Classic 전용 Voice \`ANAM=\"Wilderness\"\` 보정 유지
 
-          ## 중요
-          정적 검증은 PASS했지만 Classic Morrowind 전체 실게임 회귀 테스트는 아직 완료되지 않았습니다. 우선 확인 대상은 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르, Tribunal/Bloodmoon 대화 링크입니다.
+          ## 검증
+          - 미해결 토픽 마커: **0**
+          - CP949 변환 fallback: **0**
+          - compiled SCPT byte-identical: **PASS**
+          - DIAL 구조/의미 보존: **PASS**
+          - 예상한 INFO NAME 외 변경 없음: **PASS**
+          - ZIP 무결성 검사: **PASS**
+
+          OpenMW KR1을 기준 데이터로 포팅했으며 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르 등 기존 누락 토픽 계열을 포함합니다. Classic 엔진 전체 플레이 회귀 테스트는 별도로 계속할 수 있지만, RC7을 현재 권장 배포본으로 사용합니다.
 
           ## SHA-256
           - ZIP: \`$zip_hash\`
@@ -103,7 +108,7 @@ jobs:
           - MRK: \`$mrk_hash\`
           EOF
 
-      - name: Create or update RC7 pre-release
+      - name: Create or update RC7 release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -112,8 +117,8 @@ jobs:
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
           assets=("$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7 Pre-release' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease=false --latest
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}" --clobber
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7 Pre-release' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease "${assets[@]}"
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --latest "${assets[@]}"
           fi
