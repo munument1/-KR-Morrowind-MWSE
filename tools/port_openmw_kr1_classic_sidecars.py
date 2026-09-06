@@ -42,8 +42,6 @@ def main() -> int:
     out = args.output_dir.resolve()
     out.mkdir(parents=True, exist_ok=True)
 
-    # Classic localized Morrowind uses a same-basename .cel sidecar for display-only
-    # cell/region names, preserving the technical CELL ids in the plugin itself.
     src_cel = find_one(root, 'Morrowind_Korean_ReTranslation.cel')
     cel_text = src_cel.read_text(encoding='utf-8-sig')
     cel_rows = []
@@ -63,8 +61,7 @@ def main() -> int:
     cel_out.write_bytes(encode_cp949(cel_rendered, '.cel'))
 
     # OpenMW fallback keys mirror values historically stored in Morrowind.ini.
-    # Only display strings are ported. Technical keys (fonts, blood model/texture
-    # paths, questionnaire Sound= lines, etc.) remain untouched in the user's INI.
+    # Only display strings are ported. Technical keys remain untouched.
     cfg = find_one(root, 'openmw.cfg')
     cfg_text = cfg.read_text(encoding='utf-8-sig')
 
@@ -119,8 +116,6 @@ def main() -> int:
             f'bad blood-name set: count={len(blood)} missing={missing_blood} extra={extra_blood}'
         )
 
-    # Overlay format intentionally contains only localized display keys. The BAT
-    # merges each key into the existing section rather than replacing sections.
     ini_lines: list[str] = []
 
     ini_lines.append('[Level Up]')
@@ -166,7 +161,8 @@ def main() -> int:
     manifest_out.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
     )
-    print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    # Keep console output safe even on Windows runners whose stdout is cp1252.
+    print(json.dumps(manifest, ensure_ascii=True, indent=2))
     return 0
 
 
