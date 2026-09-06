@@ -197,6 +197,8 @@ RC7 빌드는 고정된 OpenMW KR1 및 Classic RC6 입력 해시를 기준으로
 - KR1 Blood 표시 이름: **3개 / PASS**
 - Classic INI 표시 문자열 합계: **63개 / PASS**
 - INI overlay에 `Sound`/모델/텍스처/폰트 기술 키 없음: **PASS**
+- Windows `cmd.exe` BAT 실행 및 63개 키 병합: **PASS**
+- Windows BAT 테스트에서 기존 `Sound`/Blood 모델·텍스처/일반 INI 설정 보존: **PASS**
 - RC6 FNT/TEX 8개 byte-identical: **PASS**
 - Full ZIP 무결성 검사: **PASS**
 
@@ -254,7 +256,7 @@ tools/port_openmw_kr1_classic_sidecars.py
 현재 Full ZIP:
 
 ```text
-d0222b8cbe9b30c33e9148fdc1e2a9ace8df94f940eb9fb0bffeeb311ad70262  Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+1ac160bc7c147aafed3c6a6ac1e4e3ab945e2af7a8e09f1c0fec4c2859aa8a2b  Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
 ```
 
 핵심 데이터:
@@ -274,4 +276,4 @@ ba68eeeef7047cd0253acf87288398e358ee458248b6d1cff8a5e14d0eba5747  CEL
 
 ## Status
 
-**v1.0.7-rc7 / Release / Full ZIP / no-Python BAT / KR1 TOP+MRK+CEL / 63 Classic INI strings / RC6 fonts reused**
+**v1.0.7-rc7 / Release / Full ZIP / no-Python BAT / KR1 TOP+MRK+CEL / 63 Classic INI strings / Windows BAT validated / RC6 fonts reused**
