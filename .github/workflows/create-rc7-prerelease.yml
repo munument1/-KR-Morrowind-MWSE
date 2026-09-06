@@ -28,6 +28,7 @@ jobs:
       TAG: v1.0.7-rc7-classic-cp949
       OUT_DIR: build/rc7
       FULL_ZIP: Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+      MO2_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_MO2.zip
 
     steps:
       - name: Check out main
@@ -86,82 +87,107 @@ jobs:
           test "$(jq -r '.level_up_entries' "$side")" = 20
           test "$(jq -r '.blood_name_entries' "$side")" = 3
           test "$(jq -r '.ini_display_entries' "$side")" = 63
-          test "$(jq -r '.cel_rows >= 1000' "$side")" = true
+          test "$(jq -r '.cel_rows' "$side")" = 1439
           test -s "$OUT_DIR/sidecars/Morrowind_Korean_ReTranslation.cel"
           test -s "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini"
-
-          # Make sure the overlay contains only the intended localized display keys.
           test "$(grep -c '^\[' "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini")" = 12
           test "$(grep -c '=' "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini")" = 63
           ! grep -qE '^(Sound|Model [0-9]|Texture [0-9]|Font [0-9])=' "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini"
 
-      - name: Assemble one full-install package
+      - name: Assemble nested MO2 archive and outer full package
         shell: bash
         run: |
           set -euo pipefail
           full="$OUT_DIR/full"
-          data="$full/Data Files"
-          mkdir -p "$data/Fonts"
+          mo2="$OUT_DIR/mo2-package"
+          mkdir -p "$full" "$mo2/Fonts"
 
-          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$data/"
-          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$data/"
-          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" "$data/"
-          cp "$OUT_DIR/sidecars/Morrowind_Korean_ReTranslation.cel" "$data/"
-          cp "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini" "$full/"
+          # MO2 archive: data-directory contents at archive root.
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$mo2/"
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$mo2/"
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" "$mo2/"
+          cp "$OUT_DIR/sidecars/Morrowind_Korean_ReTranslation.cel" "$mo2/"
 
           # Reuse the exact eight Classic CP949 font files from RC6.
           src='build/input/cp949-outer/Morrowind/Data Files/Fonts'
           test -d "$src"
-          cp -p "$src"/*.fnt "$src"/*.tex "$data/Fonts/"
-          test "$(find "$data/Fonts" -type f | wc -l)" = 8
-          (cd "$full" && sha256sum -c - <<'EOF'
-          a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da  Data Files/Fonts/Magic_Cards_Regular.fnt
-          2bc62d3aa56375e118e9cd172a1c1be4a5d40619a537f917eb8acced607c6284  Data Files/Fonts/Magic_Cards_Regular_0_Lod_A.tex
-          478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1  Data Files/Fonts/century_gothic_big.fnt
-          849d052c9fdec6610a54edf19c1a10617f91502c8e7ba1ae0941791282a3e0ff  Data Files/Fonts/century_gothic_big_0_Lod_A.tex
-          3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69  Data Files/Fonts/century_gothic_font_regular.fnt
-          91602af559c7e0774907523c79a8b9ec73280f84b2787ee1b5ff9b743c05f306  Data Files/Fonts/century_gothic_font_regular_0_Lod_A.tex
-          328cde4221991945c4b42d78e67fad84645c2110967c42f403bbcde717d9ef0d  Data Files/Fonts/daedric_font.fnt
-          6af53d3fcb43653e125611acc74314320fd09ba5e23d5eee7a97c56deabd0aa3  Data Files/Fonts/daedric_font_0_Lod_A.tex
+          cp -p "$src"/*.fnt "$src"/*.tex "$mo2/Fonts/"
+          test "$(find "$mo2/Fonts" -type f | wc -l)" = 8
+          (cd "$mo2" && sha256sum -c - <<'EOF'
+          a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da  Fonts/Magic_Cards_Regular.fnt
+          2bc62d3aa56375e118e9cd172a1c1be4a5d40619a537f917eb8acced607c6284  Fonts/Magic_Cards_Regular_0_Lod_A.tex
+          478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1  Fonts/century_gothic_big.fnt
+          849d052c9fdec6610a54edf19c1a10617f91502c8e7ba1ae0941791282a3e0ff  Fonts/century_gothic_big_0_Lod_A.tex
+          3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69  Fonts/century_gothic_font_regular.fnt
+          91602af559c7e0774907523c79a8b9ec73280f84b2787ee1b5ff9b743c05f306  Fonts/century_gothic_font_regular_0_Lod_A.tex
+          328cde4221991945c4b42d78e67fad84645c2110967c42f403bbcde717d9ef0d  Fonts/daedric_font.fnt
+          6af53d3fcb43653e125611acc74314320fd09ba5e23d5eee7a97c56deabd0aa3  Fonts/daedric_font_0_Lod_A.tex
           EOF
           )
-
-          cp tools/Apply_CP949_Patch.bat "$full/Apply_CP949_Patch.bat"
-          test -s "$full/Apply_CP949_Patch.bat"
-          grep -q 'Morrowind_Korean_INI.ini' "$full/Apply_CP949_Patch.bat"
-          grep -q 'entryCount -ne 63' "$full/Apply_CP949_Patch.bat"
-          grep -q '0x3457C0' "$full/Apply_CP949_Patch.bat"
-
-          cat > "$full/README_RC7.txt" <<'EOF'
-          Morrowind Classic CP949 Korean v1.0.7-rc7 - Full package
-
-          Included:
-          - Data Files/Morrowind_Korean_ReTranslation.esp/.top/.mrk
-          - Data Files/Morrowind_Korean_ReTranslation.cel (Korean cell/region names)
-          - Data Files/Fonts/*.fnt + *.tex (same eight Classic CP949 font files used by RC6)
-          - Morrowind_Korean_INI.ini (63 Korean Classic INI display strings)
-          - Apply_CP949_Patch.bat
-
-          Morrowind.exe itself is NOT included. Python is NOT required.
-
-          Install:
-          1. Prepare Morrowind GOTY 1.6.0.1820.
-          2. Apply Morrowind Code Patch (MCP) and enable Japanese localization compatibility.
-          3. Extract this ZIP into the Morrowind game directory, merging Data Files.
-          4. Double-click Apply_CP949_Patch.bat.
-             - Applies/skips the CP949 executable patch as appropriate.
-             - Backs up Morrowind.ini.
-             - Updates only 63 localized display keys:
-               * 40 character-class questionnaire strings
-               * 20 level-up messages
-               * 3 blood display names
-             - Other Morrowind.ini settings, including technical Sound/Model/Texture/Font values, are preserved.
-          5. Enable Morrowind_Korean_ReTranslation.esp and disable older Korean translation ESPs.
-          EOF
 
           python3 - <<'PY'
           from pathlib import Path
           import os, zipfile
+
+          def deterministic_zip(root: Path, out: Path):
+              files = sorted(p for p in root.rglob('*') if p.is_file())
+              with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+                  for path in files:
+                      arc = path.relative_to(root).as_posix()
+                      info = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
+                      info.compress_type = zipfile.ZIP_DEFLATED
+                      info.external_attr = 0o100644 << 16
+                      zf.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+
+          out_dir = Path(os.environ['OUT_DIR'])
+          deterministic_zip(out_dir / 'mo2-package', out_dir / 'full' / os.environ['MO2_ZIP'])
+          PY
+
+          # Outer package: root patch/INI helper + nested MO2 archive.
+          cp tools/Apply_CP949_Patch.bat "$full/Apply_CP949_Patch.bat"
+          cp "$OUT_DIR/sidecars/Morrowind_Korean_INI.ini" "$full/Morrowind_Korean_INI.ini"
+
+          cat > "$full/README_RC7.txt" <<EOF
+          Morrowind Classic CP949 Korean v1.0.7-rc7 - Full package
+
+          This outer ZIP contains a nested MO2-ready archive.
+
+          1. Extract this outer ZIP into the Morrowind game folder.
+          2. Apply Morrowind Code Patch first and enable Japanese localization compatibility.
+          3. Double-click Apply_CP949_Patch.bat in the game folder.
+             - Patches only the CP949 text-handling code after validating the target code pattern.
+             - MCP option combinations may have different whole-file SHA-256 values; that alone is not an error.
+             - Backs up Morrowind.exe and Morrowind.ini when needed.
+             - Merges only 63 localized INI display keys.
+          4. In Mod Organizer 2, install the nested archive:
+             $MO2_ZIP
+          5. Enable Morrowind_Korean_ReTranslation.esp in MO2 and disable older Korean translation ESPs.
+
+          The nested MO2 ZIP contains at its data root:
+          - Morrowind_Korean_ReTranslation.esp/.top/.mrk/.cel
+          - Fonts/*.fnt + *.tex (the exact eight RC6 Classic CP949 font files)
+
+          Morrowind.exe itself is NOT included. Python is NOT required for users.
+          EOF
+
+          test -s "$full/Apply_CP949_Patch.bat"
+          test -s "$full/Morrowind_Korean_INI.ini"
+          test -s "$full/$MO2_ZIP"
+          grep -q 'Japanese-localization code pattern verified' "$full/Apply_CP949_Patch.bat"
+          grep -q 'entryCount -ne 63' "$full/Apply_CP949_Patch.bat"
+
+          unzip -tq "$full/$MO2_ZIP"
+          unzip -Z1 "$full/$MO2_ZIP" | grep -qx 'Morrowind_Korean_ReTranslation.esp'
+          unzip -Z1 "$full/$MO2_ZIP" | grep -qx 'Morrowind_Korean_ReTranslation.top'
+          unzip -Z1 "$full/$MO2_ZIP" | grep -qx 'Morrowind_Korean_ReTranslation.mrk'
+          unzip -Z1 "$full/$MO2_ZIP" | grep -qx 'Morrowind_Korean_ReTranslation.cel'
+          test "$(unzip -Z1 "$full/$MO2_ZIP" | grep -c '^Fonts/.*\.\(fnt\|tex\)$')" = 8
+          ! unzip -Z1 "$full/$MO2_ZIP" | grep -q '^Data Files/'
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, zipfile
+
           root = Path(os.environ['OUT_DIR']) / 'full'
           out = Path(os.environ['OUT_DIR']) / os.environ['FULL_ZIP']
           files = sorted(p for p in root.rglob('*') if p.is_file())
@@ -175,16 +201,17 @@ jobs:
           PY
 
           unzip -tq "$OUT_DIR/$FULL_ZIP"
-          unzip -l "$OUT_DIR/$FULL_ZIP" | grep -q 'Morrowind_Korean_ReTranslation.cel'
-          unzip -l "$OUT_DIR/$FULL_ZIP" | grep -q 'Morrowind_Korean_INI.ini'
+          unzip -Z1 "$OUT_DIR/$FULL_ZIP" | grep -qx "$MO2_ZIP"
+          unzip -Z1 "$OUT_DIR/$FULL_ZIP" | grep -qx 'Apply_CP949_Patch.bat'
+          unzip -Z1 "$OUT_DIR/$FULL_ZIP" | grep -qx 'Morrowind_Korean_INI.ini'
+          ! unzip -Z1 "$OUT_DIR/$FULL_ZIP" | grep -q '^Data Files/'
 
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
           side="$OUT_DIR/sidecars/classic_sidecars_validation.json"
           : > "$OUT_DIR/SHA256SUMS.txt"
-          sha256sum "$OUT_DIR/$FULL_ZIP" >> "$OUT_DIR/SHA256SUMS.txt"
-          sha256sum "$validation" "$side" >> "$OUT_DIR/SHA256SUMS.txt"
-          sha256sum "$data/Morrowind_Korean_ReTranslation.esp" "$data/Morrowind_Korean_ReTranslation.top" "$data/Morrowind_Korean_ReTranslation.mrk" "$data/Morrowind_Korean_ReTranslation.cel" >> "$OUT_DIR/SHA256SUMS.txt"
-          sha256sum "$data/Fonts/"* >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$OUT_DIR/$FULL_ZIP" "$full/$MO2_ZIP" "$validation" "$side" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$mo2/Morrowind_Korean_ReTranslation.esp" "$mo2/Morrowind_Korean_ReTranslation.top" "$mo2/Morrowind_Korean_ReTranslation.mrk" "$mo2/Morrowind_Korean_ReTranslation.cel" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$mo2/Fonts/"* >> "$OUT_DIR/SHA256SUMS.txt"
           sha256sum "$full/Apply_CP949_Patch.bat" "$full/Morrowind_Korean_INI.ini" >> "$OUT_DIR/SHA256SUMS.txt"
 
       - name: Prepare release notes
@@ -194,50 +221,44 @@ jobs:
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
           side="$OUT_DIR/sidecars/classic_sidecars_validation.json"
           full_hash="$(sha256sum "$OUT_DIR/$FULL_ZIP" | awk '{print $1}')"
+          mo2_hash="$(sha256sum "$OUT_DIR/full/$MO2_ZIP" | awk '{print $1}')"
           esp_hash="$(jq -r '.output.esp_sha256' "$validation")"
-          top_hash="$(jq -r '.output.top_sha256' "$validation")"
-          mrk_hash="$(jq -r '.output.mrk_sha256' "$validation")"
           cel_hash="$(jq -r '.cel_sha256' "$side")"
           ini_hash="$(jq -r '.ini_overlay_sha256' "$side")"
-          cel_rows="$(jq -r '.cel_rows' "$side")"
 
           cat > "$OUT_DIR/RELEASE_NOTES.md" <<EOF
           Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7입니다.
 
-          ## Full ZIP 하나로 설치
-          일반 사용자는 **\`$FULL_ZIP\` 하나만 받으면 됩니다.**
+          ## 설치 구조
+          일반 사용자는 **\`$FULL_ZIP\` 하나만** 받으면 됩니다.
 
-          OpenMW KR1의 Classic 대응 표시 자원을 함께 포함합니다.
-          - **\`Morrowind_Korean_ReTranslation.cel\`** — 지역/셀 이름 $cel_rows행, CP949 변환
-          - **\`Morrowind_Korean_INI.ini\`** — Classic \`Morrowind.ini\`용 한국어 표시 문자열 **63개**
-            - 직업 자동 생성 질문/답변 40개
-            - 레벨업 메시지 20개
-            - 혈액 표시 이름 3개
+          바깥 ZIP을 Morrowind 게임 폴더에 풀면 다음이 나옵니다.
+          - \`Apply_CP949_Patch.bat\`
+          - \`Morrowind_Korean_INI.ini\`
+          - \`$MO2_ZIP\` — **MO2에서 바로 설치하는 안쪽 번역 ZIP**
+          - 설치 안내문
 
-          \`Apply_CP949_Patch.bat\`는 Python 없이 다음을 처리합니다.
-          - MCP Japanese localization 기반 \`Morrowind.exe\` CP949 패치
-          - 기존 \`Morrowind.ini\` 백업
-          - 위 **63개 표시 키만 값 단위로 병합**
-          - \`Sound=\`, blood 모델/텍스처 경로, 폰트 등 다른 기술 설정은 보존
+          안쪽 MO2 ZIP은 \`Data Files\` 폴더를 한 번 더 감싸지 않고 데이터 루트에 바로 다음을 둡니다.
+          - ESP/TOP/MRK/CEL
+          - \`Fonts/\`의 Classic CP949 폰트 8개
 
-          ## RC7 핵심 데이터
-          - 명시적 \`@topic#\` 링크 INFO **7,692개**
-          - TOP **5,843행**
-          - MRK **376행**
-          - 일반 번역 내용 변경 INFO 177개는 기존 방침대로 제외
-          - Classic compiled SCPT **236개 byte-identical**
-          - 미해결 토픽 마커 **0**
-          - CP949 변환 fallback **0**
-          - RC6 폰트 8개 byte-identical **PASS**
+          ## CP949 Code Patch
+          MCP에서 Japanese localization compatibility를 먼저 적용한 뒤 BAT를 실행합니다.
+          BAT는 이제 전체 \`Morrowind.exe\` SHA-256만으로 차단하지 않습니다. MCP의 Better typography/UI fix 등 옵션 조합으로 전체 해시가 달라도 **0x3457C0의 Japanese-localization 코드 패턴이 정확히 일치하면 안전하게 CP949 패치를 적용**합니다. 코드 패턴이 다르면 중단합니다.
 
-          ## 런타임 확인 필요
-          지역/직업 질문 영어 표시 누락은 보정했습니다. 직업 질문 완료 후 재선택/No 경로 크래시는 실제 Classic 런타임에서 다시 확인해야 합니다.
+          ## 포함 번역 자원
+          - 명시적 \`@topic#\` 링크 INFO 7,692개
+          - TOP 5,843행 / MRK 376행
+          - CEL 1,439행
+          - Classic INI 표시 문자열 63개: 질문 40 + 레벨업 20 + Blood 이름 3
+          - RC6 Classic CP949 폰트 8개 byte-identical
+          - compiled SCPT 236개 byte-identical
+          - 미해결 토픽 마커 0 / CP949 fallback 0
 
           ## SHA-256
           - Full ZIP: \`$full_hash\`
+          - Nested MO2 ZIP: \`$mo2_hash\`
           - ESP: \`$esp_hash\`
-          - TOP: \`$top_hash\`
-          - MRK: \`$mrk_hash\`
           - CEL: \`$cel_hash\`
           - Classic INI overlay: \`$ini_hash\`
           EOF
