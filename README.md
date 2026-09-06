@@ -18,20 +18,24 @@ v1.0.7-rc7-classic-cp949
 Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
 ```
 
-합본에는 다음이 모두 들어 있습니다.
+현재 합본에는 다음이 모두 들어 있습니다.
 
 - `Data Files/Morrowind_Korean_ReTranslation.esp`
 - `Data Files/Morrowind_Korean_ReTranslation.top`
 - `Data Files/Morrowind_Korean_ReTranslation.mrk`
+- `Data Files/Morrowind_Korean_ReTranslation.cel` — OpenMW KR1의 지역/셀 이름 번역 1,439행을 Classic CP949용으로 변환
 - RC6에서 실제 사용하던 Classic CP949 FNT/TEX 폰트 8개
-- `Apply_CP949_Patch.bat` — Python 설치 없이 더블클릭하는 실행 파일 패처
+- `Morrowind_Korean_Questions.ini` — OpenMW KR1의 직업 자동 생성 질문 10개, 질문/답변 40문자열을 Classic `Morrowind.ini`용으로 변환
+- `Apply_CP949_Patch.bat` — Python 설치 없이 실행 파일과 직업 질문 설정을 적용
 - 설치 안내문
 
 Bethesda의 `Morrowind.exe` 자체는 포함하지 않습니다.
 
-RC7은 기존 Classic CP949 RC6을 기반으로, 최신 OpenMW KR1에서 검증된 **대화 토픽/키워드 링크 수정만** Classic용으로 이식한 버전입니다.
-
 ## RC7 핵심 변경
+
+### 대화 토픽 링크
+
+RC6 Classic CP949를 기준으로 OpenMW KR1의 대화 링크 수정만 안전하게 이식합니다.
 
 - 명시적 `@topic#` 링크가 추가된 INFO **7,692개** 반영
 - OpenMW KR1 최종 TOP **5,843행** CP949 변환
@@ -42,7 +46,29 @@ RC7은 기존 Classic CP949 RC6을 기반으로, 최신 OpenMW KR1에서 검증�
 - CP949 변환 fallback **0**
 - 미해결 토픽 마커 **0**
 
-이 방식으로 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르 등 기존에 보고되었던 대화 토픽 누락 계열을 OpenMW KR1 기준 데이터에 맞춰 처리합니다.
+이 방식으로 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르 등 기존에 보고되었던 대화 토픽 누락 계열을 OpenMW KR1 기준 링크 데이터에 맞춰 처리합니다.
+
+### 지역/셀 이름
+
+OpenMW KR1의 지역 이름은 ESP만으로 처리되지 않고 `Morrowind_Korean_ReTranslation.cel`에도 들어 있습니다.
+
+기존 Classic RC7 합본에서 이 파일이 빠져 있어 `Seyda Neen`, `Balmora`, `Bitter Coast Region` 등의 이름이 영어로 표시되는 문제가 있었습니다. 현재 합본은 KR1 `.cel` **1,439행**을 CP949로 변환해 포함합니다.
+
+예:
+
+```text
+Seyda Neen -> 세이다 닌
+Balmora -> 발모라
+Ascadian Isles Region -> 아스카디안 제도 지역
+Bitter Coast Region -> 쓰라린 해안 지역
+Grazelands Region -> 그래즐랜드 지역
+```
+
+### 직업 자동 생성 질문
+
+직업 선택 메뉴의 GMST 문자열 자체는 OpenMW KR1과 Classic RC6 모두 이미 한국어입니다. 하지만 10개의 성향 질문 본문과 답변은 OpenMW에서는 `openmw.cfg`의 `Question_*` fallback으로 제공되고, Classic Morrowind에서는 `Morrowind.ini`의 `[Question 1]`~`[Question 10]`을 읽습니다.
+
+현재 합본은 OpenMW KR1의 질문 **10개 / 질문·답변 40문자열**을 `Morrowind_Korean_Questions.ini`로 CP949 변환하며, `Apply_CP949_Patch.bat`이 기존 `Morrowind.ini`를 백업한 뒤 해당 10개 Question 섹션만 교체합니다.
 
 ## 설치
 
@@ -56,24 +82,24 @@ RC7은 기존 Classic CP949 RC6을 기반으로, 최신 OpenMW KR1에서 검증�
 
 `Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip`을 Morrowind 게임 폴더에 풀어 기존 `Data Files`와 병합합니다.
 
-합본의 `Data Files`에는 번역 ESP/TOP/MRK와 RC6 CP949 폰트가 모두 들어 있으므로 별도 번역 ZIP이나 폰트 ZIP을 받을 필요가 없습니다.
+별도 번역 ZIP이나 폰트 ZIP을 받을 필요가 없습니다.
 
-### 3. Morrowind.exe CP949 패치
+### 3. BAT 실행
 
-MCP의 Japanese localization 옵션은 일본어용 DBCS 처리를 준비하는 단계이며, CP949 한글 바이트 범위를 처리하려면 합본에 포함된 `Apply_CP949_Patch.bat`을 한 번 실행해야 합니다.
+게임 폴더의 `Apply_CP949_Patch.bat`을 더블클릭합니다.
 
-**Python 설치는 필요 없습니다.** BAT 파일이 Windows 기본 PowerShell을 내부적으로 사용합니다.
+**Python 설치는 필요 없습니다.** BAT가 Windows 기본 PowerShell을 내부적으로 사용합니다.
 
-사용 방법:
+BAT는 다음을 처리합니다.
 
-1. `Apply_CP949_Patch.bat`이 `Morrowind.exe`와 같은 게임 폴더에 있는지 확인
-2. `Apply_CP949_Patch.bat` 더블클릭
-3. 지원되는 `Morrowind.exe`인지 SHA-256 확인
-4. 원본을 `Morrowind.exe.cp949-backup`으로 자동 백업
-5. `Morrowind.exe`에 CP949 패치를 제자리 적용
-6. 검증된 MCP Japanese-localization 입력은 패치 후 출력 SHA-256까지 확인
+1. `Morrowind.exe`의 CP949 패치 상태 확인
+2. 아직 패치되지 않았다면 지원되는 MCP 실행 파일 SHA-256인지 검사
+3. `Morrowind.exe.cp949-backup` 백업 생성 후 CP949 DBCS 루틴 적용
+4. 이미 동일한 CP949 루틴이 적용되어 있으면 실행 파일 패치는 안전하게 건너뜀
+5. `Morrowind.ini`를 `Morrowind.ini.cp949-backup`으로 백업
+6. `[Question 1]`~`[Question 10]`만 KR1 한국어 직업 질문으로 교체
 
-현재 지원 입력 SHA-256:
+현재 지원 실행 파일 입력 SHA-256:
 
 ```text
 8fe33fb11b6a682721e7456af78eefd228e8b60dc7c9f4253f89a361f8a4dfc5  MCP default
@@ -81,30 +107,32 @@ c3585b91741689057c18ff86a1c3381d47278cd1d81443d38ed3b179c2fa1cd8  MCP Japanese l
 a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c  MCP Japanese localization + current project option set
 ```
 
-현재 프로젝트에서 검증한 MCP Japanese localization 입력:
+현재 프로젝트 기준 입력:
 
 ```text
 a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
 ```
 
-위 입력을 CP949 패치한 출력 SHA-256:
+위 입력의 CP949 패치 출력 SHA-256:
 
 ```text
 bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
 ```
 
-`tools/patch_morrowind_cp949.py`는 저장소의 개발/검증용 도구로만 남겨두며 일반 사용자 배포본에는 포함하지 않습니다.
+참고로 RC6에 실제 포함되어 있던 CP949 `Morrowind.exe`의 `0x3457C0` 루틴과 현재 BAT가 적용하는 루틴은 바이트 단위로 동일합니다.
+
+`tools/patch_morrowind_cp949.py`는 저장소의 개발/검증용 도구로만 남기며 일반 사용자 배포본에는 포함하지 않습니다.
 
 ### 4. 번역 활성화
 
 - `Morrowind_Korean_ReTranslation.esp` 활성화
 - 이전 한국어 번역 ESP가 있다면 비활성화
 
-Classic에서는 기존 `Morrowind.ini` 폰트 이름을 바꾸지 않는 것을 기준으로 합니다.
+Classic에서는 기존 `Morrowind.ini`의 폰트 이름을 임의로 바꾸지 않는 것을 기준으로 합니다.
 
 ## RC6 폰트 재사용
 
-RC7은 폰트 엔진이나 CP949 DBCS atlas 형식을 변경하지 않았습니다. 따라서 새 폰트를 만들지 않고 **RC6 배포 ZIP에 들어 있던 실제 Classic CP949 폰트 파일 8개를 바이트 그대로 재사용**합니다.
+RC7은 폰트 엔진이나 CP949 DBCS atlas 형식을 변경하지 않았습니다. 따라서 **RC6 배포 ZIP에 들어 있던 실제 Classic CP949 폰트 파일 8개를 바이트 그대로 재사용**합니다.
 
 포함 파일:
 
@@ -131,11 +159,11 @@ tools/build_classic_cp949_fonts.py
 
 ## 검증 상태
 
-RC7 빌드는 고정된 OpenMW KR1 및 Classic RC6 입력 해시를 기준으로 재현하며, 다음 검증을 통과해야만 릴리스가 생성됩니다.
+RC7 빌드는 고정된 OpenMW KR1 및 Classic RC6 입력 해시를 기준으로 재현하며 다음 검증을 통과해야 Release를 갱신합니다.
 
 - DIAL 수/구조 보존: **PASS**
 - INFO 키 구조 보존: **PASS**
-- marker-only INFO 변경 수 7,692: **PASS**
+- marker-only INFO 변경 7,692: **PASS**
 - 일반 번역 변경 177개 제외: **PASS**
 - TOP 5,843행: **PASS**
 - MRK 376행: **PASS**
@@ -144,8 +172,21 @@ RC7 빌드는 고정된 OpenMW KR1 및 Classic RC6 입력 해시를 기준으로
 - compiled SCPT byte-identical: **PASS**
 - 예상한 INFO `NAME` 외 변경 없음: **PASS**
 - Classic Voice `Wilderness` 보정 유지: **PASS**
+- KR1 CEL: **1,439행 / CP949 변환 PASS**
+- KR1 직업 질문: **40문자열 / CP949 변환 PASS**
 - RC6 FNT/TEX 8개 byte-identical: **PASS**
 - Full ZIP 무결성 검사: **PASS**
+
+## 런타임 확인 상태
+
+정적 검증과 사용자 제보를 통해 다음 두 누락 원인은 확인하여 보정했습니다.
+
+- 지역/셀 이름이 영어로 표시됨 → KR1 `.cel` 누락
+- 직업 자동 생성 10문항이 영어로 표시됨 → OpenMW fallback을 Classic `Morrowind.ini` Question 섹션으로 옮기지 않았음
+
+사용자가 보고한 **직업 질문 완료 후 재선택/No 경로의 크래시**는 이 보정본으로 실제 Classic Morrowind 재테스트가 필요합니다. 현재 단계에서는 크래시 해결을 확정하지 않습니다.
+
+자막의 한글만 흐릿하게 보이는 문제 역시 별도 런타임 렌더링 이슈로 추적 중이며, 다른 UI 한글이 정상인 점을 고려하면 전체 CP949 폰트 데이터 손상으로 판단하지 않습니다.
 
 ## Classic CP949 스크립트 처리
 
@@ -170,15 +211,37 @@ Morrowind.esm -> Tribunal.esm -> Bloodmoon.esm
 
 순서에서 마지막 정의를 사용합니다.
 
-## OpenMW KR1 토픽 링크 포팅
+## 포팅 도구
 
-도구:
+대화 토픽 링크:
 
 ```text
 tools/port_openmw_kr1_topic_links.py
 ```
 
-Classic RC6 ESP를 기준본으로 유지하면서 OpenMW KR1과 INFO 응답을 비교하고, `@topic#` 마커만 제거했을 때 문장이 동일한 경우에만 링크 수정으로 이식합니다.
+Classic sidecar/직업 질문:
+
+```text
+tools/port_openmw_kr1_classic_sidecars.py
+```
+
+## RC7 SHA-256
+
+현재 Full ZIP:
+
+```text
+ad6c13bcc13a9e8dea58b155dd8f27d1ff1b95203adc569c2f9014962e1f1efc  Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+```
+
+핵심 데이터:
+
+```text
+bd277b2a2d2b343badd74f26a1ac3190466e6149914f7342135bf1112145dda5  ESP
+a5831b89d8dd7e5e4a30177d3b2df3d775eade2ce030cbb889bd226266d1c0f8  TOP
+9e4a426add4bb006365be358b125ee88714819aba3612a6eaa1ea2da54f4bc55  MRK
+ba68eeeef7047cd0253acf87288398e358ee458248b6d1cff8a5e14d0eba5747  CEL
+93d7d162fc9caa93581803857bd59f7f0a8e9b12a209371d02d641117a1a2b41  Korean Questions INI
+```
 
 ## 저장소에 포함하지 않는 것
 
@@ -187,4 +250,4 @@ Classic RC6 ESP를 기준본으로 유지하면서 OpenMW KR1과 INFO 응답을 
 
 ## Status
 
-**v1.0.7-rc7 / Release / single Full ZIP / no-Python BAT patcher / OpenMW KR1 topic-link sync / RC6 fonts reused**
+**v1.0.7-rc7 / Release / Full ZIP / no-Python BAT / KR1 TOP+MRK+CEL / Korean chargen questions / RC6 fonts reused**
