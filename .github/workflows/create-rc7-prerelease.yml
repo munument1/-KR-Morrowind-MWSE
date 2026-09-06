@@ -25,9 +25,7 @@ jobs:
       CP949_ASSET_SHA256: 0dc5f9ec99544dc12560f5844c8d0cf019e9214925ebbac50af4b3e5e51e891e
       TAG: v1.0.7-rc7-classic-cp949
       OUT_DIR: build/rc7
-      RELEASE_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip
-      PATCHER_ZIP: Morrowind_CP949_Executable_Patcher_v1.0.7-rc7.zip
-      FONT_ZIP: Morrowind_CP949_Classic_Fonts.zip
+      FULL_ZIP: Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -48,7 +46,7 @@ jobs:
           test -n "$nested"
           unzip -q "$nested" -d build/input/cp949
 
-      - name: Build and validate RC7 payload
+      - name: Build and validate RC7 translation payload
         shell: bash
         run: |
           set -euo pipefail
@@ -57,8 +55,8 @@ jobs:
             --openmw-root build/input/openmw \
             --cp949-root build/input/cp949 \
             --output-dir "$OUT_DIR"
+
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
-          source_zip="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949.zip"
           test "$(jq -r '.status' "$validation")" = PASS
           test "$(jq -r '.output.marker_only_info_changed' "$validation")" = 7692
           test "$(jq -r '.output.content_changes_skipped' "$validation")" = 177
@@ -70,54 +68,27 @@ jobs:
           test "$(jq -r '.checks.classic_dials_byte_semantics_preserved' "$validation")" = true
           test "$(jq -r '.checks.only_expected_info_names_changed' "$validation")" = true
           test "$(jq -r '.checks.classic_voice_wilderness_fix_preserved' "$validation")" = true
-          unzip -tq "$source_zip"
-          cp "$source_zip" "$OUT_DIR/$RELEASE_ZIP"
-          sha256sum "$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" > "$OUT_DIR/SHA256SUMS.txt"
 
-      - name: Package executable patcher
+      - name: Assemble one full-install package
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$OUT_DIR/patcher"
-          cp tools/patch_morrowind_cp949.py "$OUT_DIR/patcher/"
-          cat > "$OUT_DIR/patcher/README.txt" <<'EOF'
-          Morrowind CP949 executable patcher (RC7)
+          full="$OUT_DIR/full"
+          data="$full/Data Files"
+          mkdir -p "$data/Fonts"
 
-          This does NOT contain Morrowind.exe.
+          # Translation payload: direct Classic Data Files layout.
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$data/"
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$data/"
+          cp "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" "$data/"
 
-          Recommended input:
-          1. Morrowind GOTY 1.6.0.1820
-          2. Apply Morrowind Code Patch (MCP)
-          3. Enable MCP Japanese localization compatibility
-          4. Run this CP949 patcher on your own Morrowind.exe
-
-          Current validated MCP Japanese-localization input SHA-256:
-          a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
-
-          Expected CP949-patched output SHA-256 for that input:
-          bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
-
-          Example:
-          py -3 patch_morrowind_cp949.py Morrowind.exe Morrowind.MCP-Korean.exe
-
-          The patch changes only the supported MCP executable's DBCS character handling routine.
-          EOF
-          (cd "$OUT_DIR/patcher" && zip -q -9 "../$PATCHER_ZIP" patch_morrowind_cp949.py README.txt)
-          unzip -tq "$OUT_DIR/$PATCHER_ZIP"
-          sha256sum "$OUT_DIR/$PATCHER_ZIP" >> "$OUT_DIR/SHA256SUMS.txt"
-
-      - name: Reuse RC6 Classic CP949 fonts unchanged
-        shell: bash
-        run: |
-          set -euo pipefail
+          # RC6 Classic CP949 fonts: reuse exact FNT/TEX bytes.
           src='build/input/cp949-outer/Morrowind/Data Files/Fonts'
           test -d "$src"
-          mkdir -p "$OUT_DIR/fontpack/Data Files/Fonts"
-          cp -p "$src"/*.fnt "$src"/*.tex "$OUT_DIR/fontpack/Data Files/Fonts/"
-          test "$(find "$OUT_DIR/fontpack/Data Files/Fonts" -type f | wc -l)" = 8
+          cp -p "$src"/*.fnt "$src"/*.tex "$data/Fonts/"
+          test "$(find "$data/Fonts" -type f | wc -l)" = 8
 
-          # These hashes are the exact RC6 font files. RC7 must reuse them byte-for-byte.
-          (cd "$OUT_DIR/fontpack" && sha256sum -c - <<'EOF'
+          (cd "$full" && sha256sum -c - <<'EOF'
           a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da  Data Files/Fonts/Magic_Cards_Regular.fnt
           2bc62d3aa56375e118e9cd172a1c1be4a5d40619a537f917eb8acced607c6284  Data Files/Fonts/Magic_Cards_Regular_0_Lod_A.tex
           478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1  Data Files/Fonts/century_gothic_big.fnt
@@ -129,12 +100,44 @@ jobs:
           EOF
           )
 
-          # Deterministic wrapper ZIP; font payload bytes above are unchanged from RC6.
+          # Executable patcher is included in the same ZIP. Morrowind.exe itself is not redistributed.
+          cp tools/patch_morrowind_cp949.py "$full/patch_morrowind_cp949.py"
+
+          cat > "$full/README_RC7.txt" <<'EOF'
+          Morrowind Classic CP949 Korean v1.0.7-rc7 - Full package
+
+          This ZIP contains everything distributed by this project in one archive:
+          - Data Files/Morrowind_Korean_ReTranslation.esp
+          - Data Files/Morrowind_Korean_ReTranslation.top
+          - Data Files/Morrowind_Korean_ReTranslation.mrk
+          - Data Files/Fonts/*.fnt + *.tex (the same 8 Classic CP949 font files used by RC6)
+          - patch_morrowind_cp949.py
+
+          Morrowind.exe itself is NOT included.
+
+          Install:
+          1. Prepare Morrowind GOTY 1.6.0.1820.
+          2. Apply Morrowind Code Patch (MCP).
+          3. Enable MCP Japanese localization compatibility.
+          4. Extract this ZIP into the Morrowind game directory so Data Files merges with the existing Data Files folder.
+          5. Patch your own executable:
+             py -3 patch_morrowind_cp949.py Morrowind.exe Morrowind.MCP-Korean.exe
+          6. Back up the original Morrowind.exe, then use the generated Morrowind.MCP-Korean.exe as Morrowind.exe.
+          7. Enable Morrowind_Korean_ReTranslation.esp and disable older Korean translation ESPs.
+
+          Validated MCP Japanese-localization input SHA-256:
+          a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
+
+          Expected CP949-patched output SHA-256 for that input:
+          bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
+          EOF
+
+          # Deterministic full ZIP.
           python3 - <<'PY'
           from pathlib import Path
           import os, zipfile
-          root = Path(os.environ['OUT_DIR']) / 'fontpack'
-          out = Path(os.environ['OUT_DIR']) / os.environ['FONT_ZIP']
+          root = Path(os.environ['OUT_DIR']) / 'full'
+          out = Path(os.environ['OUT_DIR']) / os.environ['FULL_ZIP']
           files = sorted(p for p in root.rglob('*') if p.is_file())
           with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
               for path in files:
@@ -144,76 +147,88 @@ jobs:
                   info.external_attr = 0o100644 << 16
                   zf.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
           PY
-          unzip -tq "$OUT_DIR/$FONT_ZIP"
-          sha256sum "$OUT_DIR/$FONT_ZIP" >> "$OUT_DIR/SHA256SUMS.txt"
+          unzip -tq "$OUT_DIR/$FULL_ZIP"
+
+          validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
+          : > "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$OUT_DIR/$FULL_ZIP" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$validation" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$data/Morrowind_Korean_ReTranslation.esp" "$data/Morrowind_Korean_ReTranslation.top" "$data/Morrowind_Korean_ReTranslation.mrk" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$data/Fonts/"* >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$full/patch_morrowind_cp949.py" >> "$OUT_DIR/SHA256SUMS.txt"
 
       - name: Prepare release notes
         shell: bash
         run: |
           set -euo pipefail
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
-          zip_hash="$(sha256sum "$OUT_DIR/$RELEASE_ZIP" | awk '{print $1}')"
-          patcher_hash="$(sha256sum "$OUT_DIR/$PATCHER_ZIP" | awk '{print $1}')"
-          font_hash="$(sha256sum "$OUT_DIR/$FONT_ZIP" | awk '{print $1}')"
+          full_hash="$(sha256sum "$OUT_DIR/$FULL_ZIP" | awk '{print $1}')"
           esp_hash="$(jq -r '.output.esp_sha256' "$validation")"
           top_hash="$(jq -r '.output.top_sha256' "$validation")"
           mrk_hash="$(jq -r '.output.mrk_sha256' "$validation")"
           cat > "$OUT_DIR/RELEASE_NOTES.md" <<EOF
-          Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7 릴리스입니다.
+          Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7 정식 릴리스입니다.
 
-          RC6 Classic CP949를 기반으로, 최신 OpenMW KR1에서 실제 사용하도록 정리된 다국어 토픽/키워드 링크 수정만 이식했습니다. 일반 번역 문장 수정은 섞지 않고 Classic 전용 compiled script 및 호환 보정을 그대로 유지합니다.
+          ## 한 파일 합본
+          일반 사용자는 **\`$FULL_ZIP\` 하나만 받으면 됩니다.**
 
-          ## 설치에 필요한 구성
-          - \`$RELEASE_ZIP\` — RC7 번역 ESP/TOP/MRK
-          - \`$PATCHER_ZIP\` — MCP Japanese localization 적용본용 CP949 실행 파일 패처
-          - \`$FONT_ZIP\` — RC6에서 사용하던 Classic CP949 FNT/TEX 8개를 바이트 그대로 재사용
+          합본 ZIP 안에 다음을 모두 포함합니다.
+          - RC7 번역 ESP/TOP/MRK
+          - RC6에서 실제 사용하던 Classic CP949 FNT/TEX 폰트 8개
+          - MCP Japanese localization 적용본을 CP949 대응으로 바꾸는 실행 파일 패처
 
-          Bethesda의 \`Morrowind.exe\` 전체 파일은 이 Release에 포함하지 않습니다.
+          Bethesda의 \`Morrowind.exe\` 자체는 포함하지 않습니다.
+
+          ## 설치 순서
+          1. Morrowind GOTY 1.6.0.1820 준비
+          2. MCP 적용 및 **Japanese localization compatibility** 활성화
+          3. 합본 ZIP을 Morrowind 게임 폴더에 풀어 \`Data Files\`를 병합
+          4. 자신의 \`Morrowind.exe\`에 포함된 \`patch_morrowind_cp949.py\` 적용
+          5. 생성된 CP949 실행 파일을 사용하고 \`Morrowind_Korean_ReTranslation.esp\` 활성화
 
           ## RC7 핵심 변경
-          - 번역문은 동일하고 명시적 \`@topic#\` 링크만 추가된 INFO **7,692개** 반영
-          - OpenMW KR1 최종 TOP **5,843행**을 CP949로 변환해 포함
-          - OpenMW KR1 최종 MRK **376행**을 CP949로 변환해 포함
-          - 일반 번역 내용이 달라진 INFO **177개는 의도적으로 제외**
-          - Classic CP949 RC6 compiled SCPT **236개 바이트 그대로 보존**
-          - Classic 전용 Voice \`ANAM=\"Wilderness\"\` 보정 유지
+          - 명시적 \`@topic#\` 링크 INFO **7,692개** 반영
+          - OpenMW KR1 최종 TOP **5,843행** CP949 변환
+          - OpenMW KR1 최종 MRK **376행** CP949 변환
+          - 일반 번역 내용 변경 INFO **177개 제외**
+          - Classic compiled SCPT **236개 byte-identical**
+          - 미해결 토픽 마커 **0**
+          - CP949 변환 fallback **0**
+          - RC6 폰트 8개 byte-identical **PASS**
 
-          ## RC6 폰트팩 재사용
-          RC7은 폰트 엔진/CP949 DBCS atlas 형식을 변경하지 않습니다. 따라서 RC6 배포 ZIP에 포함되어 실제 사용하던 FNT/TEX 8개를 내용 수정 없이 그대로 분리해 \`$FONT_ZIP\`으로 제공합니다. 각 파일의 SHA-256도 RC6 원본과 일치하는지 빌드에서 검증합니다.
-
-          ## 실행 파일 패처
-          - MCP Japanese localization 적용 기준 입력 SHA-256: \`a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c\`
+          ## 실행 파일 패처 기준
+          - 검증된 MCP Japanese-localization 입력 SHA-256: \`a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c\`
           - 위 입력의 CP949 패치 출력 SHA-256: \`bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc\`
 
-          ## 검증
-          - 미해결 토픽 마커: **0**
-          - CP949 변환 fallback: **0**
-          - compiled SCPT byte-identical: **PASS**
-          - DIAL 구조/의미 보존: **PASS**
-          - 예상한 INFO NAME 외 변경 없음: **PASS**
-          - RC6 폰트 8개 byte-identical: **PASS**
-          - ZIP 무결성 검사: **PASS**
-
           ## SHA-256
-          - 번역 ZIP: \`$zip_hash\`
-          - 실행 파일 패처 ZIP: \`$patcher_hash\`
-          - RC6 재사용 폰트 ZIP: \`$font_hash\`
+          - Full ZIP: \`$full_hash\`
           - ESP: \`$esp_hash\`
           - TOP: \`$top_hash\`
           - MRK: \`$mrk_hash\`
           EOF
 
-      - name: Create or update RC7 release
+      - name: Publish full RC7 release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
-          assets=("$OUT_DIR/$RELEASE_ZIP" "$OUT_DIR/$PATCHER_ZIP" "$OUT_DIR/$FONT_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
+          assets=("$OUT_DIR/$FULL_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
+
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease=false --latest
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}" --clobber
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --latest "${assets[@]}"
           fi
+
+          # Remove the previous split user-facing ZIPs after the full package is safely uploaded.
+          for old in \
+            Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip \
+            Morrowind_CP949_Executable_Patcher_v1.0.7-rc7.zip \
+            Morrowind_CP949_Classic_Fonts.zip; do
+            gh release delete-asset "$TAG" "$old" --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
+          done
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | {name: .name, size: .size, digest: .digest}'
