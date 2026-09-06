@@ -1,0 +1,108 @@
+name: Validate Classic CP949 BAT installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/port_openmw_kr1_classic_sidecars.py'
+      - 'tools/Apply_CP949_Patch.bat'
+      - '.github/workflows/validate-classic-bat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      OPENMW_REPO: munument1/-KR-openmw
+      OPENMW_TAG: openmw-0.51.0-kr1
+      OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download KR1 and build Classic INI overlay
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force build\openmw, build\sidecars | Out-Null
+          gh release download $env:OPENMW_TAG --repo $env:OPENMW_REPO --pattern $env:OPENMW_ASSET --dir build
+          Expand-Archive -LiteralPath (Join-Path build $env:OPENMW_ASSET) -DestinationPath build\openmw -Force
+          python tools\port_openmw_kr1_classic_sidecars.py --openmw-root build\openmw --output-dir build\sidecars
+          $m = Get-Content build\sidecars\classic_sidecars_validation.json -Raw | ConvertFrom-Json
+          if ($m.status -ne 'PASS' -or $m.ini_display_entries -ne 63) { throw 'Sidecar validation failed' }
+
+      - name: Create representative Classic install fixture
+        shell: pwsh
+        run: |
+          $root = Resolve-Path .
+          $t = Join-Path $root 'build\bat-test'
+          New-Item -ItemType Directory -Force $t | Out-Null
+          Copy-Item tools\Apply_CP949_Patch.bat $t\Apply_CP949_Patch.bat
+          Copy-Item build\sidecars\Morrowind_Korean_INI.ini $t\Morrowind_Korean_INI.ini
+
+          # Dummy executable that already contains the CP949 routine, so the BAT
+          # exercises its idempotent path without distributing/using game code.
+          $offset = 0x3457C0
+          [byte[]]$patch = 0x55,0x89,0xE5,0x8B,0x4D,0x08,0x0F,0xB7,0x01,0x86,0xC4,0x80,0xFC,0x81,0x72,0x34,0x80,0xFC,0xFD,0x77,0x2F,0x80,0xEC,0x81,0x3C,0x41,0x72,0x28,0x3C,0x5A,0x76,0x14,0x3C,0x61,0x72,0x20,0x3C,0x7A,0x76,0x10,0x3C,0x81,0x72,0x18,0x3C,0xFE,0x77,0x14,0x2C,0x4D,0xEB,0x06,0x2C,0x41,0xEB,0x02,0x2C,0x47,0x50,0x3E,0x8B,0x4D,0x0C,0xE9,0x15,0x00,0x00,0x00,0xE9,0x87,0x00,0x00,0x00
+          $bytes = New-Object byte[] ($offset + $patch.Length + 64)
+          [Array]::Copy($patch, 0, $bytes, $offset, $patch.Length)
+          [IO.File]::WriteAllBytes((Join-Path $t 'Morrowind.exe'), $bytes)
+
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add('[General]'); $lines.Add('KeepGeneral=YES'); $lines.Add('')
+          $lines.Add('[Level Up]')
+          2..20 | ForEach-Object { $lines.Add("Level$_=OLD_LEVEL_$_") }
+          $lines.Add('Default=OLD_DEFAULT'); $lines.Add('KeepLevelTechnical=YES'); $lines.Add('')
+          $lines.Add('[Blood]')
+          $lines.Add('Model 0=KEEP_MODEL_0'); $lines.Add('Texture 0=KEEP_TEXTURE_0')
+          $lines.Add('Texture Name 0=OLD_BLOOD_0'); $lines.Add('Texture Name 1=OLD_BLOOD_1'); $lines.Add('Texture Name 2=OLD_BLOOD_2')
+          $lines.Add('')
+          1..10 | ForEach-Object {
+            $n=$_; $lines.Add("[Question $n]"); $lines.Add('Question=OLD_QUESTION'); $lines.Add('AnswerOne=OLD_ONE'); $lines.Add('AnswerTwo=OLD_TWO'); $lines.Add('AnswerThree=OLD_THREE'); $lines.Add("Sound=KEEP_SOUND_$n"); $lines.Add('')
+          }
+          $enc=[Text.Encoding]::GetEncoding(949)
+          [IO.File]::WriteAllText((Join-Path $t 'Morrowind.ini'), ($lines -join "`r`n"), $enc)
+
+      - name: Run BAT under cmd.exe
+        shell: cmd
+        working-directory: build\bat-test
+        run: echo.|Apply_CP949_Patch.bat
+
+      - name: Verify 63 translated keys and preserved technical settings
+        shell: pwsh
+        run: |
+          $t = Resolve-Path build\bat-test
+          $enc=[Text.Encoding]::GetEncoding(949)
+          $ini=[IO.File]::ReadAllText((Join-Path $t 'Morrowind.ini'),$enc)
+          $overlay=[IO.File]::ReadAllLines((Join-Path $t 'Morrowind_Korean_INI.ini'),$enc)
+
+          $entries=New-Object System.Collections.Generic.List[object]
+          $section=$null
+          foreach($line in $overlay){
+            if($line -match '^\[(.+)\]$'){$section=$Matches[1];continue}
+            if([string]::IsNullOrWhiteSpace($line)){continue}
+            $eq=$line.IndexOf('=')
+            if($section -and $eq -gt 0){$entries.Add([pscustomobject]@{Section=$section;Key=$line.Substring(0,$eq);Value=$line.Substring($eq+1)})}
+          }
+          if($entries.Count -ne 63){throw "Overlay entry count $($entries.Count)"}
+
+          foreach($e in $entries){
+            $sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)'
+            $m=[regex]::Match($ini,$sp)
+            if(!$m.Success){throw "Missing section $($e.Section)"}
+            $vp='(?m)^'+[regex]::Escape($e.Key)+'='+[regex]::Escape($e.Value)+'$'
+            if($m.Groups['body'].Value -notmatch $vp){throw "Missing translated value [$($e.Section)] $($e.Key)"}
+          }
+
+          if($ini -notmatch '(?m)^KeepGeneral=YES$'){throw 'General setting was damaged'}
+          if($ini -notmatch '(?m)^KeepLevelTechnical=YES$'){throw 'Level Up technical setting was damaged'}
+          if($ini -notmatch '(?m)^Model 0=KEEP_MODEL_0$'){throw 'Blood model setting was damaged'}
+          if($ini -notmatch '(?m)^Texture 0=KEEP_TEXTURE_0$'){throw 'Blood texture path was damaged'}
+          1..10 | ForEach-Object { if($ini -notmatch ('(?m)^Sound=KEEP_SOUND_'+$_+'$')){throw "Question Sound=$_ was damaged"} }
+          if(!(Test-Path (Join-Path $t 'Morrowind.ini.cp949-backup'))){throw 'INI backup was not created'}
+          if(Test-Path (Join-Path $t 'Morrowind.exe.cp949-backup')){throw 'Already-patched dummy exe should not be backed up'}
+          Write-Host 'Windows BAT validation PASS: 63 translations merged, technical settings preserved.'
