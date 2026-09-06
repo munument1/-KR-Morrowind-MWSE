@@ -1,0 +1,86 @@
+name: Port OpenMW KR1 topic links
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/port-openmw-kr1-topic-links
+    paths:
+      - tools/port_openmw_kr1_topic_links.py
+      - .github/workflows/port-openmw-kr1-topic-links.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-topic-fix:
+    runs-on: ubuntu-latest
+    env:
+      OPENMW_REPO: munument1/-KR-openmw
+      OPENMW_TAG: openmw-0.51.0-kr1
+      OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
+      CP949_REPO: munument1/Morrowind-CP949
+      CP949_TAG: v1.0.7-rc6-classic-cp949-pre1
+      CP949_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
+      OUT_DIR: build/kr1-topic-fix
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Download reference release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/downloads/openmw build/downloads/cp949 build/input/openmw build/input/cp949
+          gh release download "$OPENMW_TAG" --repo "$OPENMW_REPO" --pattern "$OPENMW_ASSET" --dir build/downloads/openmw
+          gh release download "$CP949_TAG" --repo "$CP949_REPO" --pattern "$CP949_ASSET" --dir build/downloads/cp949
+          unzip -q "build/downloads/openmw/$OPENMW_ASSET" -d build/input/openmw
+          unzip -q "build/downloads/cp949/$CP949_ASSET" -d build/input/cp949-outer
+          nested="$(find build/input/cp949-outer -type f -name 'Korean Translation.zip' -print -quit)"
+          test -n "$nested"
+          unzip -q "$nested" -d build/input/cp949
+          find build/input/openmw -type f -name 'Morrowind_Korean_ReTranslation.esp' -print
+          find build/input/openmw -type f -name 'Morrowind_Korean_ReTranslation.top' -print
+          find build/input/openmw -type f -name 'Morrowind_Korean_ReTranslation.mrk' -print
+          find build/input/cp949 -type f -name 'Morrowind_Korean_ReTranslation.esp' -print
+
+      - name: Port marker-only topic fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$OUT_DIR"
+          python3 tools/port_openmw_kr1_topic_links.py \
+            --openmw-root build/input/openmw \
+            --cp949-root build/input/cp949 \
+            --output-dir "$OUT_DIR"
+
+      - name: Verify packaged output
+        shell: bash
+        run: |
+          set -euo pipefail
+          validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
+          package="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949.zip"
+          test "$(jq -r '.status' "$validation")" = PASS
+          test "$(jq -r '.output.marker_only_info_changed' "$validation")" = 7692
+          test "$(jq -r '.output.content_changes_skipped' "$validation")" = 177
+          test "$(jq -r '.output.top_rows' "$validation")" = 5843
+          test "$(jq -r '.output.mrk_rows' "$validation")" = 376
+          test "$(jq -r '.output.unresolved_markers | length' "$validation")" = 0
+          unzip -tq "$package"
+          unzip -Z1 "$package" | sort
+          sha256sum "$OUT_DIR"/* "$OUT_DIR"/MO2/* | tee "$OUT_DIR/SHA256SUMS.txt"
+          jq '{status, strategy, output, checks}' "$validation"
+
+      - name: Upload topic-fix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Morrowind-Korean-KR1-TopicFix-Classic-CP949
+          path: |
+            build/kr1-topic-fix/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949.zip
+            build/kr1-topic-fix/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json
+            build/kr1-topic-fix/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
