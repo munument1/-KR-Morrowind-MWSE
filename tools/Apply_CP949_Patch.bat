@@ -70,26 +70,25 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$backupPath=(Join-Path (Get-Location) 'Morrowind.ini.cp949-backup');" ^
   "$overlayPath=(Join-Path (Get-Location) 'Morrowind_Korean_INI.ini');" ^
   "if(!(Test-Path -LiteralPath $backupPath)){Copy-Item -LiteralPath $iniPath -Destination $backupPath -ErrorAction Stop};" ^
-  "$ini=[IO.File]::ReadAllText($iniPath,$enc);" ^
-  "$overlay=[IO.File]::ReadAllLines($overlayPath,$enc);" ^
-  "$entries=New-Object System.Collections.Generic.List[object]; $section=$null;" ^
-  "foreach($line in $overlay){" ^
-  "  if($line -match '^\[(.+)\]$'){$section=$Matches[1];continue};" ^
-  "  if([string]::IsNullOrWhiteSpace($line)){continue};" ^
-  "  $eq=$line.IndexOf('='); if($section -and $eq -gt 0){$entries.Add([pscustomobject]@{Section=$section;Key=$line.Substring(0,$eq);Value=$line.Substring($eq+1)})};" ^
+  "$map=@{}; $section=$null; $overlay=[IO.File]::ReadAllLines($overlayPath,$enc);" ^
+  "foreach($line in $overlay){if($line -match '^\[(.+)\]$'){$section=$Matches[1];if(!$map.ContainsKey($section)){$map[$section]=@{}};continue};if([string]::IsNullOrWhiteSpace($line)){continue};$eq=$line.IndexOf('=');if($section -and $eq -gt 0){$map[$section][$line.Substring(0,$eq)]=$line.Substring($eq+1)}};" ^
+  "$entryCount=0; foreach($s in $map.Keys){$entryCount+=$map[$s].Count}; if($entryCount -ne 63){throw ('Unexpected INI overlay entry count: '+$entryCount)};" ^
+  "$src=[IO.File]::ReadAllLines($iniPath,$enc); $out=New-Object System.Collections.Generic.List[string]; $seen=@{}; $done=@{}; $current=$null;" ^
+  "foreach($line in $src){" ^
+  "  if($line -match '^\[(.+)\]\s*$'){" ^
+  "    if($current -and $map.ContainsKey($current)){foreach($k in $map[$current].Keys){$id=$current+[char]0+$k;if(!$done.ContainsKey($id)){$out.Add($k+'='+$map[$current][$k]);$done[$id]=$true}}};" ^
+  "    $current=$Matches[1]; $seen[$current]=$true; $out.Add($line); continue" ^
+  "  };" ^
+  "  if($current -and $map.ContainsKey($current)){" ^
+  "    $eq=$line.IndexOf('='); if($eq -gt 0){$key=$line.Substring(0,$eq).Trim(); if($map[$current].ContainsKey($key)){$out.Add($key+'='+$map[$current][$key]);$done[$current+[char]0+$key]=$true;continue}}" ^
+  "  };" ^
+  "  $out.Add($line)" ^
   "};" ^
-  "if($entries.Count -ne 63){throw ('Unexpected INI overlay entry count: '+$entries.Count)};" ^
-  "$nl='`r`n';" ^
-  "foreach($e in $entries){" ^
-  "  $sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)';" ^
-  "  $m=[regex]::Match($ini,$sp); if(!$m.Success){throw ('Missing Morrowind.ini section: ['+$e.Section+']')};" ^
-  "  $body=$m.Groups['body'].Value; $kp='(?m)^'+[regex]::Escape($e.Key)+'=.*$'; $newline=$e.Key+'='+$e.Value;" ^
-  "  if([regex]::IsMatch($body,$kp)){$body=[regex]::Replace($body,$kp,[System.Text.RegularExpressions.MatchEvaluator]{param($x) $newline},1)}else{$body=$body.TrimEnd([char[]]@([char]13,[char]10))+$nl+$newline+$nl};" ^
-  "  $replacement='['+$e.Section+']'+$nl+$body; $ini=$ini.Substring(0,$m.Index)+$replacement+$ini.Substring($m.Index+$m.Length);" ^
-  "};" ^
-  "[IO.File]::WriteAllText($iniPath,$ini,$enc);" ^
-  "$verify=[IO.File]::ReadAllText($iniPath,$enc);" ^
-  "foreach($e in $entries){$sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)';$m=[regex]::Match($verify,$sp);if(!$m.Success){throw ('Section missing after write: '+$e.Section)};$vp='(?m)^'+[regex]::Escape($e.Key)+'='+[regex]::Escape($e.Value)+'$';if($m.Groups['body'].Value -notmatch $vp){throw ('INI value verification failed: ['+$e.Section+'] '+$e.Key)}};" ^
+  "if($current -and $map.ContainsKey($current)){foreach($k in $map[$current].Keys){$id=$current+[char]0+$k;if(!$done.ContainsKey($id)){$out.Add($k+'='+$map[$current][$k]);$done[$id]=$true}}};" ^
+  "foreach($s in $map.Keys){if(!$seen.ContainsKey($s)){if($out.Count -gt 0 -and $out[$out.Count-1] -ne ''){$out.Add('')};$out.Add('['+$s+']');foreach($k in $map[$s].Keys){$out.Add($k+'='+$map[$s][$k]);$done[$s+[char]0+$k]=$true}}};" ^
+  "[IO.File]::WriteAllLines($iniPath,$out,$enc);" ^
+  "$actual=@{}; $section=$null; foreach($line in [IO.File]::ReadAllLines($iniPath,$enc)){if($line -match '^\[(.+)\]\s*$'){$section=$Matches[1];if(!$actual.ContainsKey($section)){$actual[$section]=@{}};continue};$eq=$line.IndexOf('=');if($section -and $eq -gt 0){$actual[$section][$line.Substring(0,$eq).Trim()]=$line.Substring($eq+1)}};" ^
+  "foreach($s in $map.Keys){if(!$actual.ContainsKey($s)){throw ('Missing section after write: ['+$s+']')};foreach($k in $map[$s].Keys){if(!$actual[$s].ContainsKey($k) -or $actual[$s][$k] -ne $map[$s][$k]){throw ('INI value verification failed: ['+$s+'] '+$k)}}};" ^
   "Write-Host ('Morrowind.ini backup: '+$backupPath); Write-Host 'Installed: 40 class-question strings + 20 level-up strings + 3 blood display names.'"
 
 if errorlevel 1 (
