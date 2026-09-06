@@ -117,18 +117,6 @@ jobs:
           3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69  Data Files/Fonts/century_gothic_font_regular.fnt
           91602af559c7e0774907523c79a8b9ec73280f84b2787ee1b5ff9b743c05f306  Data Files/Fonts/century_gothic_font_regular_0_Lod_A.tex
           328cde4221991945c4b42d78e67fad84645c2110967c42f403bbcde717d9ef0d  Data Files/Fonts/daedric_font.fnt
-          6af53d3f214da101518829ec450a476f4d81e60553f2e778a16888e42713fcd0b2  /dev/null
-          EOF
-          ) 2>/dev/null || true
-          # Verify the actual eight RC6 files explicitly (the dummy line above is ignored).
-          (cd "$full" && sha256sum -c - <<'EOF'
-          a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da  Data Files/Fonts/Magic_Cards_Regular.fnt
-          2bc62d3aa56375e118e9cd172a1c1be4a5d40619a537f917eb8acced607c6284  Data Files/Fonts/Magic_Cards_Regular_0_Lod_A.tex
-          478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1  Data Files/Fonts/century_gothic_big.fnt
-          849d052c9fdec6610a54edf19c1a10617f91502c8e7ba1ae0941791282a3e0ff  Data Files/Fonts/century_gothic_big_0_Lod_A.tex
-          3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69  Data Files/Fonts/century_gothic_font_regular.fnt
-          91602af559c7e0774907523c79a8b9ec73280f84b2787ee1b5ff9b743c05f306  Data Files/Fonts/century_gothic_font_regular_0_Lod_A.tex
-          328cde4221991945c4b42d78e67fad84645c2110967c42f403bbcde717d9ef0d  Data Files/Fonts/daedric_font.fnt
           6af53d3fcb43653e125611acc74314320fd09ba5e23d5eee7a97c56deabd0aa3  Data Files/Fonts/daedric_font_0_Lod_A.tex
           EOF
           )
