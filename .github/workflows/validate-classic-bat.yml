@@ -77,32 +77,44 @@ jobs:
         run: |
           $t = Resolve-Path build\bat-test
           $enc=[Text.Encoding]::GetEncoding(949)
-          $ini=[IO.File]::ReadAllText((Join-Path $t 'Morrowind.ini'),$enc)
-          $overlay=[IO.File]::ReadAllLines((Join-Path $t 'Morrowind_Korean_INI.ini'),$enc)
 
-          $entries=New-Object System.Collections.Generic.List[object]
-          $section=$null
-          foreach($line in $overlay){
-            if($line -match '^\[(.+)\]$'){$section=$Matches[1];continue}
-            if([string]::IsNullOrWhiteSpace($line)){continue}
-            $eq=$line.IndexOf('=')
-            if($section -and $eq -gt 0){$entries.Add([pscustomobject]@{Section=$section;Key=$line.Substring(0,$eq);Value=$line.Substring($eq+1)})}
-          }
-          if($entries.Count -ne 63){throw "Overlay entry count $($entries.Count)"}
-
-          foreach($e in $entries){
-            $sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)'
-            $m=[regex]::Match($ini,$sp)
-            if(!$m.Success){throw "Missing section $($e.Section)"}
-            $vp='(?m)^'+[regex]::Escape($e.Key)+'='+[regex]::Escape($e.Value)+'$'
-            if($m.Groups['body'].Value -notmatch $vp){throw "Missing translated value [$($e.Section)] $($e.Key)"}
+          function Read-IniMap([string]$path) {
+            $map=@{}; $section=$null
+            foreach($line in [IO.File]::ReadAllLines($path,$enc)) {
+              if($line -match '^\[(.+)\]\s*$') {
+                $section=$Matches[1]
+                if(!$map.ContainsKey($section)){$map[$section]=@{}}
+                continue
+              }
+              $eq=$line.IndexOf('=')
+              if($section -and $eq -gt 0) {
+                $map[$section][$line.Substring(0,$eq).Trim()]=$line.Substring($eq+1)
+              }
+            }
+            return $map
           }
 
-          if($ini -notmatch '(?m)^KeepGeneral=YES$'){throw 'General setting was damaged'}
-          if($ini -notmatch '(?m)^KeepLevelTechnical=YES$'){throw 'Level Up technical setting was damaged'}
-          if($ini -notmatch '(?m)^Model 0=KEEP_MODEL_0$'){throw 'Blood model setting was damaged'}
-          if($ini -notmatch '(?m)^Texture 0=KEEP_TEXTURE_0$'){throw 'Blood texture path was damaged'}
-          1..10 | ForEach-Object { if($ini -notmatch ('(?m)^Sound=KEEP_SOUND_'+$_+'$')){throw "Question Sound=$_ was damaged"} }
+          $expected=Read-IniMap (Join-Path $t 'Morrowind_Korean_INI.ini')
+          $actual=Read-IniMap (Join-Path $t 'Morrowind.ini')
+          $entryCount=0; foreach($s in $expected.Keys){$entryCount += $expected[$s].Count}
+          if($entryCount -ne 63){throw "Overlay entry count $entryCount"}
+
+          foreach($s in $expected.Keys) {
+            if(!$actual.ContainsKey($s)){throw "Missing section [$s]"}
+            foreach($k in $expected[$s].Keys) {
+              if(!$actual[$s].ContainsKey($k) -or $actual[$s][$k] -ne $expected[$s][$k]) {
+                throw "Missing translated value [$s] $k"
+              }
+            }
+          }
+
+          if($actual['General']['KeepGeneral'] -ne 'YES'){throw 'General setting was damaged'}
+          if($actual['Level Up']['KeepLevelTechnical'] -ne 'YES'){throw 'Level Up technical setting was damaged'}
+          if($actual['Blood']['Model 0'] -ne 'KEEP_MODEL_0'){throw 'Blood model setting was damaged'}
+          if($actual['Blood']['Texture 0'] -ne 'KEEP_TEXTURE_0'){throw 'Blood texture path was damaged'}
+          1..10 | ForEach-Object {
+            if($actual["Question $_"]['Sound'] -ne "KEEP_SOUND_$_"){throw "Question Sound=$_ was damaged"}
+          }
           if(!(Test-Path (Join-Path $t 'Morrowind.ini.cp949-backup'))){throw 'INI backup was not created'}
           if(Test-Path (Join-Path $t 'Morrowind.exe.cp949-backup')){throw 'Already-patched dummy exe should not be backed up'}
           Write-Host 'Windows BAT validation PASS: 63 translations merged, technical settings preserved.'
