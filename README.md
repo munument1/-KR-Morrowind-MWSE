@@ -23,10 +23,10 @@ Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
 - `Data Files/Morrowind_Korean_ReTranslation.esp`
 - `Data Files/Morrowind_Korean_ReTranslation.top`
 - `Data Files/Morrowind_Korean_ReTranslation.mrk`
-- `Data Files/Morrowind_Korean_ReTranslation.cel` — OpenMW KR1의 지역/셀 이름 번역 1,439행을 Classic CP949용으로 변환
+- `Data Files/Morrowind_Korean_ReTranslation.cel` — OpenMW KR1 지역/셀 이름 1,439행을 Classic CP949용으로 변환
 - RC6에서 실제 사용하던 Classic CP949 FNT/TEX 폰트 8개
-- `Morrowind_Korean_Questions.ini` — OpenMW KR1의 직업 자동 생성 질문 10개, 질문/답변 40문자열을 Classic `Morrowind.ini`용으로 변환
-- `Apply_CP949_Patch.bat` — Python 설치 없이 실행 파일과 직업 질문 설정을 적용
+- `Morrowind_Korean_INI.ini` — OpenMW KR1의 Classic 대응 INI 표시 문자열 63개
+- `Apply_CP949_Patch.bat` — Python 없이 실행 파일 패치와 INI 표시 문자열 병합
 - 설치 안내문
 
 Bethesda의 `Morrowind.exe` 자체는 포함하지 않습니다.
@@ -64,11 +64,31 @@ Bitter Coast Region -> 쓰라린 해안 지역
 Grazelands Region -> 그래즐랜드 지역
 ```
 
-### 직업 자동 생성 질문
+### Classic Morrowind.ini 표시 문자열 63개
 
-직업 선택 메뉴의 GMST 문자열 자체는 OpenMW KR1과 Classic RC6 모두 이미 한국어입니다. 하지만 10개의 성향 질문 본문과 답변은 OpenMW에서는 `openmw.cfg`의 `Question_*` fallback으로 제공되고, Classic Morrowind에서는 `Morrowind.ini`의 `[Question 1]`~`[Question 10]`을 읽습니다.
+OpenMW KR1은 Classic에서 `Morrowind.ini`가 담당하던 여러 표시 문자열을 `openmw.cfg` fallback으로 제공합니다. 기존 Classic RC7에서는 직업 질문만 이식했지만, 현재는 Classic에 대응되는 표시 문자열을 모두 한 번에 변환합니다.
 
-현재 합본은 OpenMW KR1의 질문 **10개 / 질문·답변 40문자열**을 `Morrowind_Korean_Questions.ini`로 CP949 변환하며, `Apply_CP949_Patch.bat`이 기존 `Morrowind.ini`를 백업한 뒤 해당 10개 Question 섹션만 교체합니다.
+구성:
+
+- `[Question 1]`~`[Question 10]`: 질문/답변 **40개**
+- `[Level Up]`: `Level2`~`Level20` + `Default` **20개**
+- `[Blood]`: `Texture Name 0`~`Texture Name 2` **3개**
+- 합계 **63개**
+
+생성 파일:
+
+```text
+Morrowind_Korean_INI.ini
+```
+
+중요하게, BAT는 섹션 전체를 덮어쓰지 않습니다. **63개 표시 키의 값만 갱신**합니다.
+
+따라서 다음과 같은 기술 설정은 기존 `Morrowind.ini` 값을 그대로 보존합니다.
+
+- 직업 질문의 `Sound=`
+- `[Blood]`의 모델/텍스처 파일 경로
+- `[Fonts]` 설정
+- 그 밖의 사용자/MCP 설정
 
 ## 설치
 
@@ -95,9 +115,10 @@ BAT는 다음을 처리합니다.
 1. `Morrowind.exe`의 CP949 패치 상태 확인
 2. 아직 패치되지 않았다면 지원되는 MCP 실행 파일 SHA-256인지 검사
 3. `Morrowind.exe.cp949-backup` 백업 생성 후 CP949 DBCS 루틴 적용
-4. 이미 동일한 CP949 루틴이 적용되어 있으면 실행 파일 패치는 안전하게 건너뜀
+4. 이미 동일한 CP949 루틴이 적용되어 있으면 실행 파일 패치는 건너뜀
 5. `Morrowind.ini`를 `Morrowind.ini.cp949-backup`으로 백업
-6. `[Question 1]`~`[Question 10]`만 KR1 한국어 직업 질문으로 교체
+6. `Morrowind_Korean_INI.ini`의 **63개 표시 키만** 기존 INI에 병합
+7. 병합된 63개 값을 다시 읽어 검증
 
 현재 지원 실행 파일 입력 SHA-256:
 
@@ -127,8 +148,6 @@ bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
 
 - `Morrowind_Korean_ReTranslation.esp` 활성화
 - 이전 한국어 번역 ESP가 있다면 비활성화
-
-Classic에서는 기존 `Morrowind.ini`의 폰트 이름을 임의로 바꾸지 않는 것을 기준으로 합니다.
 
 ## RC6 폰트 재사용
 
@@ -173,16 +192,21 @@ RC7 빌드는 고정된 OpenMW KR1 및 Classic RC6 입력 해시를 기준으로
 - 예상한 INFO `NAME` 외 변경 없음: **PASS**
 - Classic Voice `Wilderness` 보정 유지: **PASS**
 - KR1 CEL: **1,439행 / CP949 변환 PASS**
-- KR1 직업 질문: **40문자열 / CP949 변환 PASS**
+- KR1 Question 표시 문자열: **40개 / PASS**
+- KR1 Level Up 표시 문자열: **20개 / PASS**
+- KR1 Blood 표시 이름: **3개 / PASS**
+- Classic INI 표시 문자열 합계: **63개 / PASS**
+- INI overlay에 `Sound`/모델/텍스처/폰트 기술 키 없음: **PASS**
 - RC6 FNT/TEX 8개 byte-identical: **PASS**
 - Full ZIP 무결성 검사: **PASS**
 
 ## 런타임 확인 상태
 
-정적 검증과 사용자 제보를 통해 다음 두 누락 원인은 확인하여 보정했습니다.
+정적 검증과 사용자 제보를 통해 다음 누락 원인은 확인하여 보정했습니다.
 
-- 지역/셀 이름이 영어로 표시됨 → KR1 `.cel` 누락
-- 직업 자동 생성 10문항이 영어로 표시됨 → OpenMW fallback을 Classic `Morrowind.ini` Question 섹션으로 옮기지 않았음
+- 지역/셀 이름 영어 표시 → KR1 `.cel` 누락
+- 직업 자동 생성 10문항 영어 표시 → Classic INI 변환 누락
+- 레벨업 문구/혈액 표시 이름 → 같은 KR1 fallback 계열을 추가로 Classic INI에 이식
 
 사용자가 보고한 **직업 질문 완료 후 재선택/No 경로의 크래시**는 이 보정본으로 실제 Classic Morrowind 재테스트가 필요합니다. 현재 단계에서는 크래시 해결을 확정하지 않습니다.
 
@@ -219,7 +243,7 @@ Morrowind.esm -> Tribunal.esm -> Bloodmoon.esm
 tools/port_openmw_kr1_topic_links.py
 ```
 
-Classic sidecar/직업 질문:
+Classic sidecar/INI 표시 문자열:
 
 ```text
 tools/port_openmw_kr1_classic_sidecars.py
@@ -230,7 +254,7 @@ tools/port_openmw_kr1_classic_sidecars.py
 현재 Full ZIP:
 
 ```text
-ad6c13bcc13a9e8dea58b155dd8f27d1ff1b95203adc569c2f9014962e1f1efc  Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+d0222b8cbe9b30c33e9148fdc1e2a9ace8df94f940eb9fb0bffeeb311ad70262  Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
 ```
 
 핵심 데이터:
@@ -240,7 +264,7 @@ bd277b2a2d2b343badd74f26a1ac3190466e6149914f7342135bf1112145dda5  ESP
 a5831b89d8dd7e5e4a30177d3b2df3d775eade2ce030cbb889bd226266d1c0f8  TOP
 9e4a426add4bb006365be358b125ee88714819aba3612a6eaa1ea2da54f4bc55  MRK
 ba68eeeef7047cd0253acf87288398e358ee458248b6d1cff8a5e14d0eba5747  CEL
-93d7d162fc9caa93581803857bd59f7f0a8e9b12a209371d02d641117a1a2b41  Korean Questions INI
+41f706ff4073a39abc9e55e09c82d37299a8d0f5ce21b594dca3cb42d03fc3ae  Classic INI overlay
 ```
 
 ## 저장소에 포함하지 않는 것
@@ -250,4 +274,4 @@ ba68eeeef7047cd0253acf87288398e358ee458248b6d1cff8a5e14d0eba5747  CEL
 
 ## Status
 
-**v1.0.7-rc7 / Release / Full ZIP / no-Python BAT / KR1 TOP+MRK+CEL / Korean chargen questions / RC6 fonts reused**
+**v1.0.7-rc7 / Release / Full ZIP / no-Python BAT / KR1 TOP+MRK+CEL / 63 Classic INI strings / RC6 fonts reused**
