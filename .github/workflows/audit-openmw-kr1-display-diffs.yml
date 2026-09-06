@@ -1,0 +1,47 @@
+name: Audit OpenMW KR1 display diffs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/audit_openmw_kr1_display_diffs.py'
+      - '.github/workflows/audit-openmw-kr1-display-diffs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      OPENMW_REPO: munument1/-KR-openmw
+      OPENMW_TAG: openmw-0.51.0-kr1
+      OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
+      CP949_TAG: v1.0.7-rc6-classic-cp949-pre1
+      CP949_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/openmw build/cp949 build/cp949-outer
+          gh release download "$OPENMW_TAG" --repo "$OPENMW_REPO" --pattern "$OPENMW_ASSET" --dir build
+          gh release download "$CP949_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$CP949_ASSET" --dir build
+          unzip -q "build/$OPENMW_ASSET" -d build/openmw
+          unzip -q "build/$CP949_ASSET" -d build/cp949-outer
+          nested="$(find build/cp949-outer -type f -name 'Korean Translation.zip' -print -quit)"
+          test -n "$nested"
+          unzip -q "$nested" -d build/cp949
+      - name: Audit display fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/audit_openmw_kr1_display_diffs.py --openmw-root build/openmw --cp949-root build/cp949 --out build/kr1_display_audit.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kr1-display-audit
+          path: build/kr1_display_audit.json
