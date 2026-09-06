@@ -71,7 +71,10 @@ jobs:
           test "$(jq -r '.output.unresolved_markers | length' "$validation")" = 0
           unzip -tq "$package"
           unzip -Z1 "$package" | sort
-          sha256sum "$OUT_DIR"/* "$OUT_DIR"/MO2/* | tee "$OUT_DIR/SHA256SUMS.txt"
+          {
+            find "$OUT_DIR" -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum
+            find "$OUT_DIR/MO2" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum
+          } | tee "$OUT_DIR/SHA256SUMS.txt"
           jq '{status, strategy, output, checks}' "$validation"
 
       - name: Upload topic-fix artifact
