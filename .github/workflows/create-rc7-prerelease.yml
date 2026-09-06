@@ -6,6 +6,7 @@ on:
     paths:
       - 'tools/port_openmw_kr1_topic_links.py'
       - 'tools/patch_morrowind_cp949.py'
+      - 'tools/Apply_CP949_Patch.bat'
       - '.github/workflows/create-rc7-prerelease.yml'
   workflow_dispatch:
 
@@ -100,8 +101,12 @@ jobs:
           EOF
           )
 
-          # Executable patcher is included in the same ZIP. Morrowind.exe itself is not redistributed.
-          cp tools/patch_morrowind_cp949.py "$full/patch_morrowind_cp949.py"
+          # User-facing executable patcher: Windows BAT only, no Python required.
+          cp tools/Apply_CP949_Patch.bat "$full/Apply_CP949_Patch.bat"
+          test -s "$full/Apply_CP949_Patch.bat"
+          grep -q 'a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c' "$full/Apply_CP949_Patch.bat"
+          grep -q 'bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc' "$full/Apply_CP949_Patch.bat"
+          grep -q '0x3457C0' "$full/Apply_CP949_Patch.bat"
 
           cat > "$full/README_RC7.txt" <<'EOF'
           Morrowind Classic CP949 Korean v1.0.7-rc7 - Full package
@@ -111,19 +116,21 @@ jobs:
           - Data Files/Morrowind_Korean_ReTranslation.top
           - Data Files/Morrowind_Korean_ReTranslation.mrk
           - Data Files/Fonts/*.fnt + *.tex (the same 8 Classic CP949 font files used by RC6)
-          - patch_morrowind_cp949.py
+          - Apply_CP949_Patch.bat
 
           Morrowind.exe itself is NOT included.
+          Python is NOT required.
 
           Install:
           1. Prepare Morrowind GOTY 1.6.0.1820.
           2. Apply Morrowind Code Patch (MCP).
           3. Enable MCP Japanese localization compatibility.
           4. Extract this ZIP into the Morrowind game directory so Data Files merges with the existing Data Files folder.
-          5. Patch your own executable:
-             py -3 patch_morrowind_cp949.py Morrowind.exe Morrowind.MCP-Korean.exe
-          6. Back up the original Morrowind.exe, then use the generated Morrowind.MCP-Korean.exe as Morrowind.exe.
+          5. Double-click Apply_CP949_Patch.bat in the Morrowind game folder.
+          6. The BAT verifies Morrowind.exe, creates Morrowind.exe.cp949-backup, then patches Morrowind.exe in place.
           7. Enable Morrowind_Korean_ReTranslation.esp and disable older Korean translation ESPs.
+
+          The BAT uses Windows PowerShell included with Windows. No Python installation is needed.
 
           Validated MCP Japanese-localization input SHA-256:
           a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
@@ -155,7 +162,7 @@ jobs:
           sha256sum "$validation" >> "$OUT_DIR/SHA256SUMS.txt"
           sha256sum "$data/Morrowind_Korean_ReTranslation.esp" "$data/Morrowind_Korean_ReTranslation.top" "$data/Morrowind_Korean_ReTranslation.mrk" >> "$OUT_DIR/SHA256SUMS.txt"
           sha256sum "$data/Fonts/"* >> "$OUT_DIR/SHA256SUMS.txt"
-          sha256sum "$full/patch_morrowind_cp949.py" >> "$OUT_DIR/SHA256SUMS.txt"
+          sha256sum "$full/Apply_CP949_Patch.bat" >> "$OUT_DIR/SHA256SUMS.txt"
 
       - name: Prepare release notes
         shell: bash
@@ -175,7 +182,7 @@ jobs:
           합본 ZIP 안에 다음을 모두 포함합니다.
           - RC7 번역 ESP/TOP/MRK
           - RC6에서 실제 사용하던 Classic CP949 FNT/TEX 폰트 8개
-          - MCP Japanese localization 적용본을 CP949 대응으로 바꾸는 실행 파일 패처
+          - **\`Apply_CP949_Patch.bat\`** — Python 설치 없이 더블클릭하는 실행 파일 패처
 
           Bethesda의 \`Morrowind.exe\` 자체는 포함하지 않습니다.
 
@@ -183,8 +190,11 @@ jobs:
           1. Morrowind GOTY 1.6.0.1820 준비
           2. MCP 적용 및 **Japanese localization compatibility** 활성화
           3. 합본 ZIP을 Morrowind 게임 폴더에 풀어 \`Data Files\`를 병합
-          4. 자신의 \`Morrowind.exe\`에 포함된 \`patch_morrowind_cp949.py\` 적용
-          5. 생성된 CP949 실행 파일을 사용하고 \`Morrowind_Korean_ReTranslation.esp\` 활성화
+          4. 게임 폴더의 **\`Apply_CP949_Patch.bat\` 더블클릭**
+          5. BAT가 원본 \`Morrowind.exe\`를 백업하고 CP949 패치를 적용
+          6. \`Morrowind_Korean_ReTranslation.esp\` 활성화
+
+          BAT는 Windows 기본 PowerShell을 내부적으로 사용하므로 **Python은 필요 없습니다.**
 
           ## RC7 핵심 변경
           - 명시적 \`@topic#\` 링크 INFO **7,692개** 반영
@@ -223,7 +233,7 @@ jobs:
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --latest "${assets[@]}"
           fi
 
-          # Remove the previous split user-facing ZIPs after the full package is safely uploaded.
+          # Remove old split user-facing ZIPs if any remain.
           for old in \
             Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip \
             Morrowind_CP949_Executable_Patcher_v1.0.7-rc7.zip \
