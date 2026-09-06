@@ -6,7 +6,7 @@ set "INPUT=Morrowind.exe"
 set "BACKUP=Morrowind.exe.cp949-backup"
 set "INI=Morrowind.ini"
 set "INI_BACKUP=Morrowind.ini.cp949-backup"
-set "QUESTIONS=Morrowind_Korean_Questions.ini"
+set "INI_OVERLAY=Morrowind_Korean_INI.ini"
 
 if not exist "%INPUT%" (
   echo [ERROR] Morrowind.exe was not found next to this BAT file.
@@ -21,8 +21,8 @@ if not exist "%INI%" (
   exit /b 1
 )
 
-if not exist "%QUESTIONS%" (
-  echo [ERROR] %QUESTIONS% is missing from the Full package.
+if not exist "%INI_OVERLAY%" (
+  echo [ERROR] %INI_OVERLAY% is missing from the Full package.
   pause
   exit /b 1
 )
@@ -61,37 +61,46 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/2] Installing Korean class questionnaire into Morrowind.ini...
+echo [2/2] Installing 63 Korean display strings into Morrowind.ini...
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$enc=[Text.Encoding]::GetEncoding(949);" ^
   "$iniPath=(Join-Path (Get-Location) 'Morrowind.ini');" ^
   "$backupPath=(Join-Path (Get-Location) 'Morrowind.ini.cp949-backup');" ^
-  "$questionsPath=(Join-Path (Get-Location) 'Morrowind_Korean_Questions.ini');" ^
+  "$overlayPath=(Join-Path (Get-Location) 'Morrowind_Korean_INI.ini');" ^
   "if(!(Test-Path -LiteralPath $backupPath)){Copy-Item -LiteralPath $iniPath -Destination $backupPath -ErrorAction Stop};" ^
   "$ini=[IO.File]::ReadAllText($iniPath,$enc);" ^
-  "$questions=[IO.File]::ReadAllText($questionsPath,$enc);" ^
-  "for($n=1;$n -le 10;$n++){" ^
-  "  $pattern='(?ms)^\[Question '+$n+'\]\r?\n.*?(?=^\[|\z)';" ^
-  "  $ini=[regex]::Replace($ini,$pattern,'');" ^
+  "$overlay=[IO.File]::ReadAllLines($overlayPath,$enc);" ^
+  "$entries=New-Object System.Collections.Generic.List[object]; $section=$null;" ^
+  "foreach($line in $overlay){" ^
+  "  if($line -match '^\[(.+)\]$'){$section=$Matches[1];continue};" ^
+  "  if([string]::IsNullOrWhiteSpace($line)){continue};" ^
+  "  $eq=$line.IndexOf('='); if($section -and $eq -gt 0){$entries.Add([pscustomobject]@{Section=$section;Key=$line.Substring(0,$eq);Value=$line.Substring($eq+1)})};" ^
   "};" ^
-  "$nl=[Environment]::NewLine;" ^
-  "$ini=$ini.TrimEnd()+$nl+$nl+$questions.Trim()+$nl;" ^
+  "if($entries.Count -ne 63){throw ('Unexpected INI overlay entry count: '+$entries.Count)};" ^
+  "$nl='`r`n';" ^
+  "foreach($e in $entries){" ^
+  "  $sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)';" ^
+  "  $m=[regex]::Match($ini,$sp); if(!$m.Success){throw ('Missing Morrowind.ini section: ['+$e.Section+']')};" ^
+  "  $body=$m.Groups['body'].Value; $kp='(?m)^'+[regex]::Escape($e.Key)+'=.*$'; $newline=$e.Key+'='+$e.Value;" ^
+  "  if([regex]::IsMatch($body,$kp)){$body=[regex]::Replace($body,$kp,[System.Text.RegularExpressions.MatchEvaluator]{param($x) $newline},1)}else{$body=$body.TrimEnd([char[]]@([char]13,[char]10))+$nl+$newline+$nl};" ^
+  "  $replacement='['+$e.Section+']'+$nl+$body; $ini=$ini.Substring(0,$m.Index)+$replacement+$ini.Substring($m.Index+$m.Length);" ^
+  "};" ^
   "[IO.File]::WriteAllText($iniPath,$ini,$enc);" ^
   "$verify=[IO.File]::ReadAllText($iniPath,$enc);" ^
-  "for($n=1;$n -le 10;$n++){if($verify -notmatch ('(?m)^\[Question '+$n+'\]$')){throw ('Question section missing after write: '+$n)}};" ^
-  "Write-Host ('Morrowind.ini backup: '+$backupPath); Write-Host 'Korean Question 1-10 sections installed.'"
+  "foreach($e in $entries){$sp='(?ms)^\['+[regex]::Escape($e.Section)+'\]\r?\n(?<body>.*?)(?=^\[|\z)';$m=[regex]::Match($verify,$sp);if(!$m.Success){throw ('Section missing after write: '+$e.Section)};$vp='(?m)^'+[regex]::Escape($e.Key)+'='+[regex]::Escape($e.Value)+'$';if($m.Groups['body'].Value -notmatch $vp){throw ('INI value verification failed: ['+$e.Section+'] '+$e.Key)}};" ^
+  "Write-Host ('Morrowind.ini backup: '+$backupPath); Write-Host 'Installed: 40 class-question strings + 20 level-up strings + 3 blood display names.'"
 
 if errorlevel 1 (
   echo.
-  echo [FAILED] Morrowind.ini question patch failed.
+  echo [FAILED] Morrowind.ini Korean display-string patch failed.
   pause
   exit /b 1
 )
 
 echo.
-echo [OK] CP949 executable and Korean class questions are installed.
+echo [OK] CP949 executable and Korean Classic INI display strings are installed.
 echo Enable Morrowind_Korean_ReTranslation.esp in the launcher.
 echo.
 pause
