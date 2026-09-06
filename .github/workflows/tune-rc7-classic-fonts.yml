@@ -1,0 +1,192 @@
+name: Tune RC7 Classic Korean fonts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/tune_classic_cp949_fonts.py'
+      - '.github/workflows/tune-rc7-classic-fonts.yml'
+  workflow_run:
+    workflows: ['Create RC7 Classic CP949 release']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tune-and-publish:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    env:
+      TAG: v1.0.7-rc7-classic-cp949
+      FULL_ZIP: Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+      MO2_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_MO2.zip
+      RC6_TAG: v1.0.7-rc6-classic-cp949-pre1
+      RC6_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
+      RC6_SHA256: 0dc5f9ec99544dc12560f5844c8d0cf019e9214925ebbac50af4b3e5e51e891e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download current RC7 and pinned RC6 font source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/font-tune
+          mkdir -p build/font-tune/download build/font-tune/full build/font-tune/mo2 build/font-tune/rc6
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$FULL_ZIP" --dir build/font-tune/download
+          gh release download "$RC6_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$RC6_ASSET" --dir build/font-tune/download
+          echo "$RC6_SHA256  build/font-tune/download/$RC6_ASSET" | sha256sum -c -
+          unzip -q "build/font-tune/download/$FULL_ZIP" -d build/font-tune/full
+          test -s "build/font-tune/full/$MO2_ZIP"
+          unzip -q "build/font-tune/full/$MO2_ZIP" -d build/font-tune/mo2
+          unzip -q "build/font-tune/download/$RC6_ASSET" -d build/font-tune/rc6
+
+      - name: Restore exact RC6 font baseline and tune Korean glyphs
+        shell: bash
+        run: |
+          set -euo pipefail
+          src='build/font-tune/rc6/Morrowind/Data Files/Fonts'
+          dst='build/font-tune/mo2/Fonts'
+          test -d "$src"
+          rm -rf "$dst"
+          mkdir -p "$dst"
+          cp -p "$src"/*.fnt "$src"/*.tex "$dst/"
+          test "$(find "$dst" -maxdepth 1 -type f | wc -l)" = 8
+
+          (cd build/font-tune/mo2 && sha256sum -c - <<'EOF'
+          a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da  Fonts/Magic_Cards_Regular.fnt
+          2bc62d3aa56375e118e9cd172a1c1be4a5d40619a537f917eb8acced607c6284  Fonts/Magic_Cards_Regular_0_Lod_A.tex
+          478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1  Fonts/century_gothic_big.fnt
+          849d052c9fdec6610a54edf19c1a10617f91502c8e7ba1ae0941791282a3e0ff  Fonts/century_gothic_big_0_Lod_A.tex
+          3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69  Fonts/century_gothic_font_regular.fnt
+          91602af559c7e0774907523c79a8b9ec73280f84b2787ee1b5ff9b743c05f306  Fonts/century_gothic_font_regular_0_Lod_A.tex
+          328cde4221991945c4b42d78e67fad84645c2110967c42f403bbcde717d9ef0d  Fonts/daedric_font.fnt
+          6af53d3fcb43653e125611acc74314320fd09ba5e23d5eee7a97c56deabd0aa3  Fonts/daedric_font_0_Lod_A.tex
+          EOF
+          )
+
+          python3 tools/tune_classic_cp949_fonts.py "$dst" --manifest build/font-tune/classic_cp949_font_tuning.json
+          jq -e '.status == "PASS"' build/font-tune/classic_cp949_font_tuning.json >/dev/null
+          jq -e '.profiles.Magic_Cards_Regular.render_height == 12' build/font-tune/classic_cp949_font_tuning.json >/dev/null
+          jq -e '.profiles.century_gothic_font_regular.render_height == 12' build/font-tune/classic_cp949_font_tuning.json >/dev/null
+          jq -e '.profiles.century_gothic_big.render_height == 14' build/font-tune/classic_cp949_font_tuning.json >/dev/null
+          jq -e '[.files[] | select(.changed_cells? != null) | .changed_cells] | min > 1000' build/font-tune/classic_cp949_font_tuning.json >/dev/null
+
+          # FNTs and TEXes must differ from the RC6 baseline after tuning.
+          test "$(sha256sum "$dst/Magic_Cards_Regular.fnt" | cut -d' ' -f1)" != a4100e60a1bac906c9b1c631d6302b337db3b3f6cec1dca6c4c870d018c384da
+          test "$(sha256sum "$dst/century_gothic_big.fnt" | cut -d' ' -f1)" != 478eb1f662282b45900e966909824d9fdadd32ab2466d4321dd000d2bdb774b1
+          test "$(sha256sum "$dst/century_gothic_font_regular.fnt" | cut -d' ' -f1)" != 3b9fe4504f407b90899ce288883c644a4a34aee0abec3274e90e32339c4c5e69
+
+      - name: Repack deterministic MO2 and Full ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, zipfile
+
+          def make_zip(root: Path, out: Path):
+              files = sorted(p for p in root.rglob('*') if p.is_file())
+              with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+                  for p in files:
+                      arc = p.relative_to(root).as_posix()
+                      info = zipfile.ZipInfo(arc, date_time=(1980,1,1,0,0,0))
+                      info.compress_type = zipfile.ZIP_DEFLATED
+                      info.external_attr = 0o100644 << 16
+                      zf.writestr(info, p.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+
+          base = Path('build/font-tune')
+          full = base / 'full'
+          mo2 = base / 'mo2'
+          nested = full / os.environ['MO2_ZIP']
+          nested.unlink(missing_ok=True)
+          make_zip(mo2, nested)
+
+          readme = full / 'README_RC7.txt'
+          text = readme.read_text(encoding='utf-8', errors='replace') if readme.exists() else ''
+          marker = '\nKorean font tuning:'
+          if marker in text:
+              text = text.split(marker, 1)[0].rstrip() + '\n'
+          text += (
+              '\nKorean font tuning:\n'
+              '- CP949 atlas cells enlarged with nearest-neighbour sampling.\n'
+              '- Magic Cards / Century Gothic regular / Daedric DBCS geometry: 9x12.\n'
+              '- Century Gothic big DBCS geometry: 10x14.\n'
+              '- English/single-byte glyphs and DBCS UV layout are unchanged.\n'
+          )
+          readme.write_text(text, encoding='utf-8')
+
+          out = base / os.environ['FULL_ZIP']
+          make_zip(full, out)
+          PY
+
+          unzip -tq "build/font-tune/$FULL_ZIP"
+          unzip -tq "build/font-tune/full/$MO2_ZIP"
+          test "$(unzip -Z1 "build/font-tune/full/$MO2_ZIP" | grep -c '^Fonts/.*\.\(fnt\|tex\)$')" = 8
+          ! unzip -Z1 "build/font-tune/full/$MO2_ZIP" | grep -q '^Data Files/'
+
+      - name: Generate checksums and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sums=build/font-tune/SHA256SUMS.txt
+          : > "$sums"
+          sha256sum "build/font-tune/$FULL_ZIP" >> "$sums"
+          sha256sum "build/font-tune/full/$MO2_ZIP" >> "$sums"
+          sha256sum build/font-tune/classic_cp949_font_tuning.json >> "$sums"
+          sha256sum build/font-tune/mo2/Morrowind_Korean_ReTranslation.esp >> "$sums"
+          sha256sum build/font-tune/mo2/Morrowind_Korean_ReTranslation.top >> "$sums"
+          sha256sum build/font-tune/mo2/Morrowind_Korean_ReTranslation.mrk >> "$sums"
+          sha256sum build/font-tune/mo2/Morrowind_Korean_ReTranslation.cel >> "$sums"
+          sha256sum build/font-tune/mo2/Fonts/* >> "$sums"
+          sha256sum build/font-tune/full/Apply_CP949_Patch.bat build/font-tune/full/Morrowind_Korean_INI.ini >> "$sums"
+
+          full_hash="$(sha256sum "build/font-tune/$FULL_ZIP" | awk '{print $1}')"
+          mo2_hash="$(sha256sum "build/font-tune/full/$MO2_ZIP" | awk '{print $1}')"
+          cat > build/font-tune/RELEASE_NOTES.md <<EOF
+          Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7입니다.
+
+          ## 설치
+          일반 사용자는 **\`$FULL_ZIP\` 하나만** 받으면 됩니다.
+          바깥 ZIP의 BAT/INI는 게임 폴더에서 사용하고, 안쪽 **\`$MO2_ZIP\`**은 MO2에서 바로 설치합니다.
+
+          ## 이번 폰트 조정
+          한글이 영문보다 작게 보이고 자막에서 특히 작게 느껴지는 문제를 줄이기 위해 Classic CP949 폰트를 조정했습니다.
+          - CP949 8x11 저장 셀과 UV 계산은 그대로 유지
+          - 한글 셀 내부 픽셀을 nearest-neighbour로 확대해 획을 더 크게 사용
+          - Magic Cards / Century Gothic regular / Daedric: **9x12** 표시 geometry
+          - Century Gothic big: **10x14** 표시 geometry
+          - 영문/ASCII glyph는 변경하지 않음
+          - 원본 RC6 폰트 8개를 매 빌드마다 복원한 뒤 튜닝하므로 중복 확대되지 않음
+
+          이 변경은 정적 검증을 통과했지만 실제 Classic 화면에서의 최종 크기/자막 선명도는 런타임 테스트가 필요합니다.
+
+          ## 기존 RC7 내용
+          - OpenMW KR1 topic-link INFO 7,692개
+          - TOP 5,843행 / MRK 376행 / CEL 1,439행
+          - Classic INI 표시 문자열 63개
+          - CP949 code-pattern 기반 BAT 패치
+          - MO2용 중첩 번역 ZIP
+
+          ## SHA-256
+          - Full ZIP: \`$full_hash\`
+          - Nested MO2 ZIP: \`$mo2_hash\`
+          EOF
+
+      - name: Publish tuned RC7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "build/font-tune/$FULL_ZIP" \
+            build/font-tune/classic_cp949_font_tuning.json \
+            build/font-tune/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file build/font-tune/RELEASE_NOTES.md --latest
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | {name: .name, size: .size, digest: .digest}'
