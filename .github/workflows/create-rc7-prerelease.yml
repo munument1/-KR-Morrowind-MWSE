@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'tools/port_openmw_kr1_topic_links.py'
+      - 'tools/patch_morrowind_cp949.py'
       - '.github/workflows/create-rc7-prerelease.yml'
   workflow_dispatch:
 
@@ -18,12 +19,13 @@ jobs:
       OPENMW_REPO: munument1/-KR-openmw
       OPENMW_TAG: openmw-0.51.0-kr1
       OPENMW_ASSET: Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip
-      CP949_REPO: munument1/Morrowind-CP949
+      CP949_REPO: munument1/-KR-Morrowind-MWSE
       CP949_TAG: v1.0.7-rc6-classic-cp949-pre1
       CP949_ASSET: Morrowind_Korean_ReTranslation_v1.0.7-rc6_Classic_CP949.zip
       TAG: v1.0.7-rc7-classic-cp949
       OUT_DIR: build/rc7
       RELEASE_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_Classic_CP949.zip
+      PATCHER_ZIP: Morrowind_CP949_Executable_Patcher_v1.0.7-rc7.zip
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -69,12 +71,45 @@ jobs:
           cp "$source_zip" "$OUT_DIR/$RELEASE_ZIP"
           sha256sum "$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.esp" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.top" "$OUT_DIR/MO2/Morrowind_Korean_ReTranslation.mrk" > "$OUT_DIR/SHA256SUMS.txt"
 
+      - name: Package executable patcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT_DIR/patcher"
+          cp tools/patch_morrowind_cp949.py "$OUT_DIR/patcher/"
+          cat > "$OUT_DIR/patcher/README.txt" <<'EOF'
+          Morrowind CP949 executable patcher (RC7)
+
+          This does NOT contain Morrowind.exe.
+
+          Recommended input:
+          1. Morrowind GOTY 1.6.0.1820
+          2. Apply Morrowind Code Patch (MCP)
+          3. Enable MCP Japanese localization compatibility
+          4. Run this CP949 patcher on your own Morrowind.exe
+
+          Current validated MCP Japanese-localization input SHA-256:
+          a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c
+
+          Expected CP949-patched output SHA-256 for that input:
+          bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc
+
+          Example:
+          py -3 patch_morrowind_cp949.py Morrowind.exe Morrowind.MCP-Korean.exe
+
+          The patch changes only the supported MCP executable's DBCS character handling routine.
+          EOF
+          (cd "$OUT_DIR/patcher" && zip -q -9 "../$PATCHER_ZIP" patch_morrowind_cp949.py README.txt)
+          unzip -tq "$OUT_DIR/$PATCHER_ZIP"
+          sha256sum "$OUT_DIR/$PATCHER_ZIP" >> "$OUT_DIR/SHA256SUMS.txt"
+
       - name: Prepare release notes
         shell: bash
         run: |
           set -euo pipefail
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
           zip_hash="$(sha256sum "$OUT_DIR/$RELEASE_ZIP" | awk '{print $1}')"
+          patcher_hash="$(sha256sum "$OUT_DIR/$PATCHER_ZIP" | awk '{print $1}')"
           esp_hash="$(jq -r '.output.esp_sha256' "$validation")"
           top_hash="$(jq -r '.output.top_sha256' "$validation")"
           mrk_hash="$(jq -r '.output.mrk_sha256' "$validation")"
@@ -82,6 +117,13 @@ jobs:
           Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7 릴리스입니다.
 
           RC6 Classic CP949를 기반으로, 최신 OpenMW KR1에서 실제 사용하도록 정리된 다국어 토픽/키워드 링크 수정만 이식했습니다. 일반 번역 문장 수정은 섞지 않고 Classic 전용 compiled script 및 호환 보정을 그대로 유지합니다.
+
+          ## 설치에 필요한 구성
+          - RC7 번역 ZIP
+          - MCP Japanese localization 호환이 적용된 자신의 \`Morrowind.exe\` + 이 Release의 CP949 실행 파일 패처
+          - Classic CP949 FNT/TEX 폰트팩
+
+          Bethesda의 \`Morrowind.exe\` 전체 파일은 이 Release에 포함하지 않습니다.
 
           ## RC7 핵심 변경
           - 번역문은 동일하고 명시적 \`@topic#\` 링크만 추가된 INFO **7,692개** 반영
@@ -91,6 +133,10 @@ jobs:
           - Classic CP949 RC6 compiled SCPT **236개 바이트 그대로 보존**
           - Classic 전용 Voice \`ANAM=\"Wilderness\"\` 보정 유지
 
+          ## 실행 파일 패처
+          - MCP Japanese localization 적용 기준 입력 SHA-256: \`a87ee7f9239023469d4c031e6dab87648a316ab8c1354e96c2478aca3376167c\`
+          - 위 입력의 CP949 패치 출력 SHA-256: \`bff9c8381d59657e5dfbfc66058745996327b20f4516f63e54ce9c7f726b45fc\`
+
           ## 검증
           - 미해결 토픽 마커: **0**
           - CP949 변환 fallback: **0**
@@ -99,10 +145,9 @@ jobs:
           - 예상한 INFO NAME 외 변경 없음: **PASS**
           - ZIP 무결성 검사: **PASS**
 
-          OpenMW KR1을 기준 데이터로 포팅했으며 하스팟 안타볼리스, 라니스 아트리스, 아지라/갈베디르 등 기존 누락 토픽 계열을 포함합니다. Classic 엔진 전체 플레이 회귀 테스트는 별도로 계속할 수 있지만, RC7을 현재 권장 배포본으로 사용합니다.
-
           ## SHA-256
-          - ZIP: \`$zip_hash\`
+          - 번역 ZIP: \`$zip_hash\`
+          - 실행 파일 패처 ZIP: \`$patcher_hash\`
           - ESP: \`$esp_hash\`
           - TOP: \`$top_hash\`
           - MRK: \`$mrk_hash\`
@@ -115,7 +160,7 @@ jobs:
         run: |
           set -euo pipefail
           validation="$OUT_DIR/Morrowind_Korean_ReTranslation_KR1_TopicFix_Classic_CP949_validation.json"
-          assets=("$OUT_DIR/$RELEASE_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
+          assets=("$OUT_DIR/$RELEASE_ZIP" "$OUT_DIR/$PATCHER_ZIP" "$validation" "$OUT_DIR/SHA256SUMS.txt")
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target main --title 'Morrowind Classic CP949 v1.0.7-rc7' --notes-file "$OUT_DIR/RELEASE_NOTES.md" --prerelease=false --latest
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${assets[@]}" --clobber
