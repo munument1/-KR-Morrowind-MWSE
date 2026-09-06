@@ -51,7 +51,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "    throw ('Unsupported Morrowind.exe code pattern at 0x3457C0. SHA-256: '+$hash+' / bytes: '+$actual)" ^
   "  };" ^
   "  if($sourceMatch -and ($known -notcontains $hash)){Write-Host ('MCP option-combination SHA-256: '+$hash); Write-Host 'Japanese-localization code pattern verified; continuing safely.'};" ^
-  "  if(Test-Path -LiteralPath $backupPath){throw 'Executable backup already exists but Morrowind.exe is not CP949-patched. Restore/remove the backup before retrying.'};" ^
+  "  if(Test-Path -LiteralPath $backupPath){$n=1;do{$candidate=$backupPath+'.'+$n;$n++}while(Test-Path -LiteralPath $candidate);Write-Host ('Existing executable backup preserved: '+$backupPath);$backupPath=$candidate;Write-Host ('Creating additional backup: '+$backupPath)};" ^
   "  Copy-Item -LiteralPath $inputPath -Destination $backupPath -ErrorAction Stop;" ^
   "  [Array]::Copy($patch,0,$bytes,$offset,$patch.Length);" ^
   "  [IO.File]::WriteAllBytes($inputPath,$bytes);" ^
