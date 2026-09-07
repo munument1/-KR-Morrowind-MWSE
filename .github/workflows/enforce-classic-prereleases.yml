@@ -1,0 +1,63 @@
+name: Enforce Classic prereleases
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/enforce-classic-prereleases.yml'
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - 'Create RC7 Classic CP949 release'
+      - 'Finalize RC7 Classic compatibility'
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  prerelease:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark every Classic release as prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t releases < <(
+            gh api --paginate "/repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | [.id, .tag_name, .prerelease, .draft] | @tsv'
+          )
+
+          total=0
+          changed=0
+          for row in "${releases[@]}"; do
+            IFS=$'\t' read -r id tag prerelease draft <<< "$row"
+            total=$((total + 1))
+            if [[ "$prerelease" != "true" ]]; then
+              echo "Marking prerelease: $tag (release $id)"
+              gh api -X PATCH "/repos/$GITHUB_REPOSITORY/releases/$id" \
+                -F prerelease=true \
+                -f make_latest=false \
+                >/dev/null
+              changed=$((changed + 1))
+            else
+              echo "Already prerelease: $tag"
+            fi
+          done
+
+          echo "Releases checked: $total"
+          echo "Releases changed: $changed"
+
+          remaining="$(gh api --paginate "/repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.prerelease != true) | .tag_name')"
+          if [[ -n "$remaining" ]]; then
+            echo 'The following releases are still not prereleases:' >&2
+            echo "$remaining" >&2
+            exit 1
+          fi
+
+          echo 'All Classic releases are prereleases.'
