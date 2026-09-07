@@ -81,7 +81,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$map=@{}; $section=$null; $overlay=[IO.File]::ReadAllLines($overlayPath,$enc);" ^
   "foreach($line in $overlay){if($line -match '^\[(.+)\]$'){$section=$Matches[1];if(!$map.ContainsKey($section)){$map[$section]=@{}};continue};if([string]::IsNullOrWhiteSpace($line)){continue};$eq=$line.IndexOf('=');if($section -and $eq -gt 0){$map[$section][$line.Substring(0,$eq)]=$line.Substring($eq+1)}};" ^
   "$entryCount=0; foreach($s in $map.Keys){$entryCount+=$map[$s].Count}; if($entryCount -ne 63){throw ('Unexpected INI overlay entry count: '+$entryCount)};" ^
-  "$src=[IO.File]::ReadAllLines($iniPath,$enc); $out=New-Object System.Collections.Generic.List[string]; $seen=@{}; $done=@{}; $current=$null;" ^
+  "$raw=[IO.File]::ReadAllLines($iniPath,$enc); $srcList=New-Object System.Collections.Generic.List[string]; $qSeen=@{}; $skip=$false; $duplicateQuestions=0;" ^
+  "foreach($line in $raw){if($line -match '^\[(.+)\]\s*$'){$sec=$Matches[1];$skip=$false;if($sec -match '^Question (?:[1-9]|10)$'){if($qSeen.ContainsKey($sec)){$skip=$true;$duplicateQuestions++}else{$qSeen[$sec]=$true}}};if(-not $skip){$srcList.Add($line)}};" ^
+  "$src=$srcList.ToArray(); $out=New-Object System.Collections.Generic.List[string]; $seen=@{}; $done=@{}; $current=$null;" ^
   "foreach($line in $src){" ^
   "  if($line -match '^\[(.+)\]\s*$'){" ^
   "    if($current -and $map.ContainsKey($current)){foreach($k in $map[$current].Keys){$id=$current+[char]0+$k;if(!$done.ContainsKey($id)){$out.Add($k+'='+$map[$current][$k]);$done[$id]=$true}}};" ^
@@ -95,9 +97,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "if($current -and $map.ContainsKey($current)){foreach($k in $map[$current].Keys){$id=$current+[char]0+$k;if(!$done.ContainsKey($id)){$out.Add($k+'='+$map[$current][$k]);$done[$id]=$true}}};" ^
   "foreach($s in $map.Keys){if(!$seen.ContainsKey($s)){if($out.Count -gt 0 -and $out[$out.Count-1] -ne ''){$out.Add('')};$out.Add('['+$s+']');foreach($k in $map[$s].Keys){$out.Add($k+'='+$map[$s][$k]);$done[$s+[char]0+$k]=$true}}};" ^
   "[IO.File]::WriteAllLines($iniPath,$out,$enc);" ^
-  "$actual=@{}; $section=$null; foreach($line in [IO.File]::ReadAllLines($iniPath,$enc)){if($line -match '^\[(.+)\]\s*$'){$section=$Matches[1];if(!$actual.ContainsKey($section)){$actual[$section]=@{}};continue};$eq=$line.IndexOf('=');if($section -and $eq -gt 0){$actual[$section][$line.Substring(0,$eq).Trim()]=$line.Substring($eq+1)}};" ^
+  "$actual=@{}; $section=$null; $qCounts=@{}; foreach($line in [IO.File]::ReadAllLines($iniPath,$enc)){if($line -match '^\[(.+)\]\s*$'){$section=$Matches[1];if(!$actual.ContainsKey($section)){$actual[$section]=@{}};if($section -match '^Question (?:[1-9]|10)$'){if(!$qCounts.ContainsKey($section)){$qCounts[$section]=0};$qCounts[$section]++};continue};$eq=$line.IndexOf('=');if($section -and $eq -gt 0){$actual[$section][$line.Substring(0,$eq).Trim()]=$line.Substring($eq+1)}};" ^
   "foreach($s in $map.Keys){if(!$actual.ContainsKey($s)){throw ('Missing section after write: ['+$s+']')};foreach($k in $map[$s].Keys){if(!$actual[$s].ContainsKey($k) -or $actual[$s][$k] -ne $map[$s][$k]){throw ('INI value verification failed: ['+$s+'] '+$k)}}};" ^
-  "Write-Host ('Morrowind.ini backup: '+$backupPath); Write-Host 'Installed: 40 class-question strings + 20 level-up strings + 3 blood display names.'"
+  "for($n=1;$n -le 10;$n++){$s='Question '+$n;if(!$qCounts.ContainsKey($s) -or $qCounts[$s] -ne 1){throw ('Question section canonicalization failed: ['+$s+'] count='+$qCounts[$s])}};" ^
+  "Write-Host ('Morrowind.ini backup: '+$backupPath); Write-Host ('Removed duplicate Question sections: '+$duplicateQuestions); Write-Host 'Installed: 40 class-question strings + 20 level-up strings + 3 blood display names.'"
 
 if errorlevel 1 (
   echo.
