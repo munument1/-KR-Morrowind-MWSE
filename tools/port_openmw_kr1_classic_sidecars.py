@@ -56,9 +56,29 @@ def main() -> int:
         cel_rows.append((source, translated))
     if len(cel_rows) < 1000:
         raise SystemExit(f'unexpectedly small .cel: {len(cel_rows)} rows')
-    cel_out = out / 'Morrowind_Korean_ReTranslation.cel'
+
+    # Classic localized Morrowind resolves cell display names from a .cel sidecar
+    # that has the SAME basename as the loaded ESM/ESP.  The OpenMW KR1 source
+    # combines the master-cell translations under the translation ESP basename,
+    # so emit both that compatibility name and the three official master names.
+    # Extra mappings are harmless; keeping the same complete table in each master
+    # sidecar also handles cells touched by the expansions without translating CELL
+    # identifiers inside the plugin itself (which would break scripts).
     cel_rendered = '\r\n'.join(f'{a}\t{b}' for a, b in cel_rows) + '\r\n'
-    cel_out.write_bytes(encode_cp949(cel_rendered, '.cel'))
+    cel_bytes = encode_cp949(cel_rendered, '.cel')
+    cel_names = (
+        'Morrowind_Korean_ReTranslation.cel',
+        'Morrowind.cel',
+        'Tribunal.cel',
+        'Bloodmoon.cel',
+    )
+    cel_outputs: dict[str, str] = {}
+    for name in cel_names:
+        path = out / name
+        path.write_bytes(cel_bytes)
+        cel_outputs[name] = sha256(path)
+    if len(set(cel_outputs.values())) != 1:
+        raise SystemExit(f'Classic CEL aliases are not byte-identical: {cel_outputs}')
 
     # OpenMW fallback keys mirror values historically stored in Morrowind.ini.
     # Only display strings are ported. Technical keys remain untouched.
@@ -150,11 +170,13 @@ def main() -> int:
         'source_cel': str(src_cel),
         'source_cfg': str(cfg),
         'cel_rows': len(cel_rows),
+        'cel_alias_count': len(cel_outputs),
+        'cel_aliases': cel_outputs,
         'question_entries': len(questions),
         'level_up_entries': len(level_up),
         'blood_name_entries': len(blood),
         'ini_display_entries': ini_entry_count,
-        'cel_sha256': sha256(cel_out),
+        'cel_sha256': cel_outputs['Morrowind_Korean_ReTranslation.cel'],
         'ini_overlay_sha256': sha256(ini_out),
     }
     manifest_out = out / 'classic_sidecars_validation.json'
