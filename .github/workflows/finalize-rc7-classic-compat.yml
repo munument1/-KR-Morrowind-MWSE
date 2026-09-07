@@ -1,0 +1,174 @@
+name: Finalize RC7 Classic compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-rc7-classic-compat.yml'
+  workflow_run:
+    workflows: ['Create RC7 Classic CP949 release']
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    env:
+      TAG: v1.0.7-rc7-classic-cp949
+      FULL_ZIP: Morrowind_Classic_CP949_Korean_v1.0.7-rc7_Full.zip
+      MO2_ZIP: Morrowind_Korean_ReTranslation_v1.0.7-rc7_MO2.zip
+    steps:
+      - name: Download current RC7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/finalize
+          mkdir -p build/finalize/download build/finalize/full build/finalize/mo2
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$FULL_ZIP" --dir build/finalize/download
+          unzip -q "build/finalize/download/$FULL_ZIP" -d build/finalize/full
+          test -s "build/finalize/full/$MO2_ZIP"
+          unzip -q "build/finalize/full/$MO2_ZIP" -d build/finalize/mo2
+
+      - name: Add Classic master CEL aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          src='build/finalize/mo2/Morrowind_Korean_ReTranslation.cel'
+          test -s "$src"
+          cp "$src" build/finalize/mo2/Morrowind.cel
+          cp "$src" build/finalize/mo2/Tribunal.cel
+          cp "$src" build/finalize/mo2/Bloodmoon.cel
+          sha="$(sha256sum "$src" | awk '{print $1}')"
+          for f in Morrowind.cel Tribunal.cel Bloodmoon.cel; do
+            test "$(sha256sum "build/finalize/mo2/$f" | awk '{print $1}')" = "$sha"
+          done
+
+      - name: Repack MO2 archive with late Classic ESP timestamp
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, zipfile
+
+          root = Path('build/finalize/mo2')
+          out = Path('build/finalize/full') / os.environ['MO2_ZIP']
+          out.unlink(missing_ok=True)
+          files = sorted(p for p in root.rglob('*') if p.is_file())
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+              for path in files:
+                  arc = path.relative_to(root).as_posix()
+                  # Vanilla Morrowind orders ESP plugins by filesystem modification
+                  # date (oldest first).  Keep the translation ESP at a fixed late
+                  # date so MO2 extraction does not make it a 1980-era early plugin
+                  # that can be overwritten by dirty English GMSTs in other ESPs.
+                  dt = (2037, 1, 1, 0, 0, 0) if arc.lower().endswith('.esp') else (1980, 1, 1, 0, 0, 0)
+                  info = zipfile.ZipInfo(arc, date_time=dt)
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.external_attr = 0o100644 << 16
+                  zf.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+
+          with zipfile.ZipFile(out) as zf:
+              names = set(zf.namelist())
+              required = {
+                  'Morrowind_Korean_ReTranslation.esp',
+                  'Morrowind_Korean_ReTranslation.cel',
+                  'Morrowind.cel', 'Tribunal.cel', 'Bloodmoon.cel',
+              }
+              missing = required - names
+              if missing:
+                  raise SystemExit(f'missing MO2 entries: {sorted(missing)}')
+              esp = zf.getinfo('Morrowind_Korean_ReTranslation.esp')
+              if esp.date_time[:3] != (2037, 1, 1):
+                  raise SystemExit(f'bad ESP archive timestamp: {esp.date_time}')
+          PY
+          unzip -tq "build/finalize/full/$MO2_ZIP"
+
+      - name: Update package readme and rebuild Full ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> build/finalize/full/README_RC7.txt <<'EOF'
+
+          Classic localization compatibility:
+          - Morrowind.cel / Tribunal.cel / Bloodmoon.cel are included for master-owned cell display names and door destination tooltips.
+          - Morrowind_Korean_ReTranslation.cel is retained for translation-plugin compatibility.
+          - The Korean translation ESP uses a fixed 2037 archive timestamp so Classic Morrowind/MO2 extraction keeps it late in ESP load order. Keep it after other gameplay ESPs if you manually reorder plugins.
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, zipfile
+          root = Path('build/finalize/full')
+          out = Path('build/finalize') / os.environ['FULL_ZIP']
+          files = sorted(p for p in root.rglob('*') if p.is_file())
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+              for path in files:
+                  arc = path.relative_to(root).as_posix()
+                  info = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.external_attr = 0o100644 << 16
+                  zf.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+          PY
+          unzip -tq "build/finalize/$FULL_ZIP"
+
+      - name: Generate checksums and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sums=build/finalize/SHA256SUMS.txt
+          : > "$sums"
+          sha256sum "build/finalize/$FULL_ZIP" >> "$sums"
+          sha256sum "build/finalize/full/$MO2_ZIP" >> "$sums"
+          sha256sum build/finalize/mo2/Morrowind_Korean_ReTranslation.esp >> "$sums"
+          sha256sum build/finalize/mo2/*.cel >> "$sums"
+          sha256sum build/finalize/mo2/Morrowind_Korean_ReTranslation.top build/finalize/mo2/Morrowind_Korean_ReTranslation.mrk >> "$sums"
+          sha256sum build/finalize/mo2/Fonts/* >> "$sums"
+          sha256sum build/finalize/full/Apply_CP949_Patch.bat build/finalize/full/Morrowind_Korean_INI.ini >> "$sums"
+
+          full_hash="$(sha256sum "build/finalize/$FULL_ZIP" | awk '{print $1}')"
+          mo2_hash="$(sha256sum "build/finalize/full/$MO2_ZIP" | awk '{print $1}')"
+          cat > build/finalize/RELEASE_NOTES.md <<EOF
+          Classic Morrowind 1.6.0.1820용 CP949 한국어 번역 RC7입니다.
+
+          ## 설치
+          일반 사용자는 **\`$FULL_ZIP\` 하나만** 받으면 됩니다. 바깥 ZIP의 BAT/INI는 게임 폴더에서 사용하고, 안쪽 **\`$MO2_ZIP\`**은 MO2에서 설치합니다.
+
+          ## Classic 현지화 보강
+          - \`Morrowind.cel\`, \`Tribunal.cel\`, \`Bloodmoon.cel\` 추가: 원본 마스터가 소유한 CELL의 표시명과 출입구 목적지 툴팁을 Classic의 동일-basename CEL 경로로 번역합니다.
+          - \`Morrowind_Korean_ReTranslation.cel\`도 유지합니다.
+          - 번역 ESP는 Classic의 날짜 기반 ESP 순서에서 다른 ESP에 한국어 GMST가 다시 영어로 덮이지 않도록 ZIP 내부 수정일을 **2037-01-01**로 고정했습니다. 수동 정렬 시에도 번역 ESP를 다른 일반 ESP 뒤에 두세요.
+          - CELL 레코드의 실제 ID/NAME은 영어 그대로 유지하므로 PositionCell 등 스크립트 호환성을 건드리지 않습니다.
+
+          ## 기존 RC7
+          - TOP 5,843행 / MRK 376행 / CEL 번역 1,439행
+          - Classic INI 표시 문자열 63개
+          - CP949 code-pattern 기반 BAT 패치
+          - RC6 Classic CP949 폰트 8개 원본 유지
+
+          ## 현재 조사 중
+          - 직업 퀴즈 결과에서 '다시 선택' 경고의 No 경로 크래시는 아직 런타임 재검증이 필요합니다.
+          - 특정 자막/직업 질문 프롬프트만 흐려지는 현상은 폰트 파일 자체가 아니라 UI 픽셀 정렬 경로로 조사 중입니다.
+
+          ## SHA-256
+          - Full ZIP: \`$full_hash\`
+          - Nested MO2 ZIP: \`$mo2_hash\`
+          EOF
+
+      - name: Publish finalized RC7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "build/finalize/$FULL_ZIP" \
+            build/finalize/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file build/finalize/RELEASE_NOTES.md --latest
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | {name: .name, size: .size, digest: .digest}'
