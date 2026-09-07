@@ -33,7 +33,7 @@ jobs:
           Expand-Archive -LiteralPath (Join-Path build $env:OPENMW_ASSET) -DestinationPath build\openmw -Force
           python tools\port_openmw_kr1_classic_sidecars.py --openmw-root build\openmw --output-dir build\sidecars
           $m = Get-Content build\sidecars\classic_sidecars_validation.json -Raw | ConvertFrom-Json
-          if ($m.status -ne 'PASS' -or $m.ini_display_entries -ne 63) { throw 'Sidecar validation failed' }
+          if ($m.status -ne 'PASS' -or $m.ini_display_entries -ne 63 -or $m.cel_alias_count -ne 4) { throw 'Sidecar validation failed' }
 
       - name: Create representative Classic install fixture
         shell: pwsh
@@ -64,6 +64,11 @@ jobs:
           1..10 | ForEach-Object {
             $n=$_; $lines.Add("[Question $n]"); $lines.Add('Question=OLD_QUESTION'); $lines.Add('AnswerOne=OLD_ONE'); $lines.Add('AnswerTwo=OLD_TWO'); $lines.Add('AnswerThree=OLD_THREE'); $lines.Add("Sound=KEEP_SOUND_$n"); $lines.Add('')
           }
+          # Reproduce stale sections left by older installers. These must be
+          # removed entirely; the first canonical section and its Sound value win.
+          $lines.Add('[Question 1]'); $lines.Add('Question=STALE_DUPLICATE'); $lines.Add('AnswerOne=STALE'); $lines.Add('Sound=BAD_DUP_SOUND_1'); $lines.Add('')
+          $lines.Add('[Question 10]'); $lines.Add('Question=STALE_DUPLICATE'); $lines.Add('AnswerOne=STALE'); $lines.Add('Sound=BAD_DUP_SOUND_10'); $lines.Add('')
+
           $enc=[Text.Encoding]::GetEncoding(949)
           [IO.File]::WriteAllText((Join-Path $t 'Morrowind.ini'), ($lines -join "`r`n"), $enc)
 
@@ -72,7 +77,7 @@ jobs:
         working-directory: build\bat-test
         run: echo.|Apply_CP949_Patch.bat
 
-      - name: Verify 63 translated keys and preserved technical settings
+      - name: Verify 63 translated keys, canonical questions, and preserved technical settings
         shell: pwsh
         run: |
           $t = Resolve-Path build\bat-test
@@ -108,6 +113,17 @@ jobs:
             }
           }
 
+          $qCount=@{}
+          foreach($line in [IO.File]::ReadAllLines((Join-Path $t 'Morrowind.ini'),$enc)) {
+            if($line -match '^\[(Question (?:[1-9]|10))\]\s*$') {
+              $s=$Matches[1]; if(!$qCount.ContainsKey($s)){$qCount[$s]=0}; $qCount[$s]++
+            }
+          }
+          1..10 | ForEach-Object {
+            $s="Question $_"
+            if(!$qCount.ContainsKey($s) -or $qCount[$s] -ne 1){throw "Duplicate/missing [$s]: $($qCount[$s])"}
+          }
+
           if($actual['General']['KeepGeneral'] -ne 'YES'){throw 'General setting was damaged'}
           if($actual['Level Up']['KeepLevelTechnical'] -ne 'YES'){throw 'Level Up technical setting was damaged'}
           if($actual['Blood']['Model 0'] -ne 'KEEP_MODEL_0'){throw 'Blood model setting was damaged'}
@@ -117,4 +133,4 @@ jobs:
           }
           if(!(Test-Path (Join-Path $t 'Morrowind.ini.cp949-backup'))){throw 'INI backup was not created'}
           if(Test-Path (Join-Path $t 'Morrowind.exe.cp949-backup')){throw 'Already-patched dummy exe should not be backed up'}
-          Write-Host 'Windows BAT validation PASS: 63 translations merged, technical settings preserved.'
+          Write-Host 'Windows BAT validation PASS: 63 translations merged, duplicate Question sections removed, technical settings preserved.'
