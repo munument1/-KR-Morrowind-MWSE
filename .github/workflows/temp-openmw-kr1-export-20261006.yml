@@ -1,0 +1,35 @@
+name: Temporary OpenMW KR1 source export 20261006
+
+on:
+  push:
+    branches: [font-release-upload-temp-20260808]
+    paths:
+      - '.github/workflows/temp-openmw-kr1-export-20261006.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download KR1 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download openmw-0.51.0-kr1 \
+            --repo munument1/-KR-openmw \
+            --pattern 'Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip' \
+            --dir .
+          mkdir payload
+          unzip -q Morrowind-Korean-OpenMW-0.51.0-KR1-Full.zip -d payload
+          test -s payload/mods/Morrowind_Korean_ReTranslation/Morrowind_Korean_ReTranslation.esp
+      - name: Upload KR1 ESP
+        uses: actions/upload-artifact@v4
+        with:
+          name: morrowind-openmw-kr1-source
+          path: payload/mods/Morrowind_Korean_ReTranslation/Morrowind_Korean_ReTranslation.esp
+          if-no-files-found: error
+          retention-days: 1
